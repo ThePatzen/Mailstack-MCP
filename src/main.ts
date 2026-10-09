@@ -2,6 +2,7 @@ import { access, constants, stat } from 'node:fs/promises';
 import express from 'express';
 import helmet from 'helmet';
 import { loadConfig } from './config.js';
+import { initializeDatabase, closeDatabase as closeStorageDatabase } from './storage/database.js';
 
 async function verifyDataDirectory(dataDir: string): Promise<void> {
   try {
@@ -16,6 +17,8 @@ async function verifyDataDirectory(dataDir: string): Promise<void> {
 async function main(): Promise<void> {
   const config = loadConfig(process.env);
   await verifyDataDirectory(config.dataDir);
+  initializeDatabase(config.dataDir, config.encryptionKey);
+  registerDatabaseCloser(closeStorageDatabase);
 
   const app = express();
   app.disable('x-powered-by');
@@ -32,7 +35,6 @@ async function main(): Promise<void> {
     shuttingDown = true;
     process.stdout.write(`Received ${signal}; shutting down.\n`);
     server.close(async (error) => {
-      // The storage task wires this hook to the initialized SQLite database.
       await closeDatabase();
       if (error) {
         process.stderr.write('HTTP server did not close cleanly.\n');
