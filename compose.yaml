@@ -1,0 +1,19 @@
+services:
+  mailstack-mcp:
+    build: .
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      APP_PORT: "3000"
+      DATA_DIR: /app/data
+    ports:
+      - "127.0.0.1:${APP_PORT:-3000}:3000"
+    volumes:
+      - "${DATA_DIR:-./data}:/app/data"
+    init: true
+    read_only: true
+    tmpfs:
+      - /tmp
+    security_opt:
+      - no-new-privileges:true
