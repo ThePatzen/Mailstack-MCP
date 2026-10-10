@@ -7,6 +7,7 @@ import { loadConfig } from './config.js';
 import { initializeDatabase, closeDatabase as closeStorageDatabase } from './storage/database.js';
 import { createManagementApp } from './web/app.js';
 import { configureImapService } from './imap/client.js';
+import { configureSmtpService } from './smtp/sender.js';
 import { authenticateMcpRequest, principalFromAuthInfo } from './http/mcp-auth.js';
 import { buildMcpServer } from './mcp/server.js';
 
@@ -23,6 +24,7 @@ async function verifyDataDirectory(dataDir: string): Promise<void> {
 async function main(): Promise<void> {
   const config = loadConfig(process.env);
   configureImapService(config);
+  configureSmtpService(config);
   await verifyDataDirectory(config.dataDir);
   initializeDatabase(config.dataDir, config.encryptionKey);
   registerDatabaseCloser(closeStorageDatabase);
@@ -34,7 +36,7 @@ async function main(): Promise<void> {
   const mcpHandler = createMcpHandler(({ authInfo }) => {
     const principal = principalFromAuthInfo(authInfo);
     if (!principal) throw new Error('MCP authentication context is unavailable.');
-    return buildMcpServer(principal);
+    return buildMcpServer(principal, Boolean(config.smtp));
   });
   const handleMcp = toNodeHandler(mcpHandler);
   app.all('/mcp', authenticateMcpRequest, (req, res) => {
