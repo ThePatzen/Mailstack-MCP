@@ -3,6 +3,7 @@ import express from 'express';
 import helmet from 'helmet';
 import { loadConfig } from './config.js';
 import { initializeDatabase, closeDatabase as closeStorageDatabase } from './storage/database.js';
+import { createManagementApp } from './web/app.js';
 
 async function verifyDataDirectory(dataDir: string): Promise<void> {
   try {
@@ -24,6 +25,12 @@ async function main(): Promise<void> {
   app.disable('x-powered-by');
   app.use(helmet());
   app.get('/health', (_req, res) => res.status(200).json({ status: 'ok' }));
+  app.use(createManagementApp({
+    staticTokens: config.staticTokens,
+    encryptionKey: config.encryptionKey,
+    imap: config.imap,
+    smtpConfigured: Boolean(config.smtp),
+  }));
 
   const server = app.listen(config.httpPort, '0.0.0.0', () => {
     process.stdout.write(`Mailstack MCP listening on port ${config.httpPort}\n`);
