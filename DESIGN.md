@@ -83,3 +83,4 @@ Primary buttons use solid blue with white text and a darker hover state. Seconda
 - Keep SMTP permission conditional on SMTP being configured.
 - Do not add unrelated dashboard, billing, team, or account-navigation patterns.
 - Do not use decorative display type or heavy shadows in this interface.
+- Use inline SVGs for decorative interface icons; keep icon graphics out of text glyphs.
