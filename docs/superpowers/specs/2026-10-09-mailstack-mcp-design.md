@@ -1,4 +1,4 @@
-# IMAP MCP Server – Design
+# Mailstack MCP Server – Design
 
 ## Ziel und Rahmen
 

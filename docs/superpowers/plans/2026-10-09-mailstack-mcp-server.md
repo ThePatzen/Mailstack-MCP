@@ -1,4 +1,4 @@
-# IMAP MCP Server Implementation Plan
+# Mailstack MCP Server Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
@@ -8,7 +8,7 @@
 
 **Tech Stack:** TypeScript, Node.js 20+, MCP TypeScript SDK v2 (`@modelcontextprotocol/server`, `@modelcontextprotocol/node`), Express, EJS, ImapFlow, Nodemailer, SQLite, Docker Compose.
 
-**Spec:** `docs/superpowers/specs/2026-10-09-imap-mcp-design.md`
+**Spec:** `docs/superpowers/specs/2026-10-09-mailstack-mcp-design.md`
 
 ## Global Constraints
 
