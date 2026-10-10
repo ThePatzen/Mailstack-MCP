@@ -2,7 +2,7 @@ import { createHash } from 'node:crypto';
 import { Router, urlencoded, type Request, type Response } from 'express';
 import rateLimit from 'express-rate-limit';
 import { encryptSecret } from '../security/crypto.js';
-import { createOrUpdateAccount, createUserToken, findSession, getAccountCredentials, listTokens, revokeToken, setToolPermission } from '../storage/repository.js';
+import { createOrUpdateAccount, createUserToken, deleteToken, findSession, getAccountCredentials, listTokens, revokeToken, setToolPermission } from '../storage/repository.js';
 import { verifyImapLogin, verifyStaticToken } from './auth.js';
 import type { WebDependencies } from './app.js';
 import { createLoginCsrfToken, csrfToken, LOGIN_CSRF_COOKIE, requireCsrf, verifyLoginCsrfToken } from './csrf.js';
@@ -136,7 +136,7 @@ export function createManagementRouter(deps: WebDependencies): Router {
       return;
     }
     managementReq.accountUsername = account.username;
-    const queryNotice = req.query.notice === 'revoked' ? 'Token widerrufen.' : req.query.notice === 'unchanged' ? 'Token war bereits widerrufen oder wurde nicht gefunden.' : '';
+    const queryNotice = req.query.notice === 'revoked' ? 'Token widerrufen.' : req.query.notice === 'deleted' ? 'Token dauerhaft gelöscht.' : req.query.notice === 'unchanged' ? 'Token war bereits widerrufen oder wurde nicht gefunden.' : '';
     renderTokens(req, res, deps, { notice: queryNotice });
   });
 
@@ -162,6 +162,12 @@ export function createManagementRouter(deps: WebDependencies): Router {
     const management = (req as ManagementRequest).management!;
     const revoked = revokeToken(management.accountId, safeText(req.params.tokenId, 64));
     res.redirect(303, `/manage/tokens?notice=${revoked ? 'revoked' : 'unchanged'}`);
+  });
+
+  router.post('/manage/tokens/:tokenId/delete', loggedIn, csrf, (req, res) => {
+    const management = (req as ManagementRequest).management!;
+    const deleted = deleteToken(management.accountId, safeText(req.params.tokenId, 64));
+    res.redirect(303, `/manage/tokens?notice=${deleted ? 'deleted' : 'unchanged'}`);
   });
 
   router.post('/manage/tokens/:tokenId/permissions/:tool', loggedIn, csrf, (req, res) => {

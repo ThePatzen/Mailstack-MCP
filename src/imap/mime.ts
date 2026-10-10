@@ -11,11 +11,51 @@ export interface MessageContent {
   text: string; html: string | null; truncated: boolean;
   attachments: Array<{ partId: string; filename: string; contentType: string; size: number }>;
 }
+export interface AttachmentPart {
+  partId: string;
+  filename: string;
+  contentType: string;
+  size: number;
+}
+interface BodyStructureNode {
+  type?: string;
+  part?: string;
+  disposition?: string | false;
+  dispositionParameters?: Record<string, string>;
+  parameters?: Record<string, string>;
+  id?: string | null;
+  size?: number;
+  childNodes?: BodyStructureNode[];
+}
 function addresses(value: { value?: Array<{ name?: string; address?: string }> } | Array<{ value?: Array<{ name?: string; address?: string }> }> | undefined): string[] {
   const groups = Array.isArray(value) ? value : value ? [value] : [];
   return groups.flatMap((group) => group.value ?? []).slice(0, 50).map((item) => (item.name ? `${item.name} <${item.address ?? ''}>` : item.address ?? '').slice(0, 512));
 }
-export async function parseMessage(uid: number, source: Buffer, partIds: string[] = []): Promise<MessageContent> {
+export function attachmentParts(root: BodyStructureNode | undefined): AttachmentPart[] {
+  const attachments: AttachmentPart[] = [];
+  const visit = (node: BodyStructureNode): void => {
+    const contentType = node.type?.toLowerCase() || 'application/octet-stream';
+    const majorType = contentType.split('/')[0];
+    const disposition = typeof node.disposition === 'string' ? node.disposition.toLowerCase() : '';
+    const filename = node.dispositionParameters?.filename ?? node.parameters?.name ?? node.parameters?.filename;
+    const isAttachment = disposition === 'attachment' || Boolean(filename) ||
+      (disposition === 'inline' && Boolean(node.id)) ||
+      Boolean(majorType && majorType !== 'text' && majorType !== 'multipart');
+    if (isAttachment && attachments.length < MAX_ATTACHMENTS) {
+      attachments.push({
+        partId: node.part ?? '1',
+        filename: (filename || 'attachment').slice(0, 255),
+        contentType: contentType.slice(0, 255),
+        size: Number.isSafeInteger(node.size) && (node.size ?? -1) >= 0 ? node.size! : 0,
+      });
+    }
+    for (const child of node.childNodes ?? []) visit(child);
+  };
+  if (root) visit(root);
+  return attachments;
+}
+
+export async function parseMessage(uid: number, source: Buffer, attachments: AttachmentPart[] = []): Promise<MessageContent> {
   if (!Buffer.isBuffer(source) || source.length > MAX_MESSAGE_BYTES) throw new ImapServiceError('TOO_LARGE');
   try {
     const parsed = await simpleParser(source);
@@ -25,10 +65,7 @@ export async function parseMessage(uid: number, source: Buffer, partIds: string[
       uid, subject: parsed.subject?.slice(0, 2000) ?? null, from: addresses(parsed.from), to: addresses(parsed.to), cc: addresses(parsed.cc),
       date: parsed.date?.toISOString() ?? null, text, html: htmlSource?.slice(0, MAX_TEXT_LENGTH) ?? null,
       truncated: text.length < (parsed.text?.length ?? 0) || (htmlSource?.length ?? 0) > MAX_TEXT_LENGTH,
-      attachments: parsed.attachments.slice(0, MAX_ATTACHMENTS).map((attachment, index) => ({
-        partId: partIds[index] ?? String(index + 1), filename: (attachment.filename ?? 'attachment').slice(0, 255),
-        contentType: attachment.contentType.slice(0, 255), size: attachment.size,
-      })),
+      attachments: attachments.slice(0, MAX_ATTACHMENTS),
     };
   } catch { throw new ImapServiceError('CONNECTION', 'The message content could not be parsed.'); }
 }

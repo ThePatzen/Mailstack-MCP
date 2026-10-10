@@ -150,7 +150,7 @@ Der Beispielbefehl setzt `DATA_DIR=./data` voraus. Wenn Sie in `.env` einen ande
 
 Der Dienst prüft das Postfach beim IMAP-Server und speichert nach erfolgreicher Anmeldung das Passwort verschlüsselt. Die statischen Tokens autorisieren ausschließlich den Zugang zur Verwaltung; sie sind keine MCP-Bearer-Tokens und gewähren für sich allein keinen Zugriff auf ein Postfach.
 
-Nach der Anmeldung erstellen Sie unter **Zugriffstoken** ein benanntes User-Token. Der vollständige Wert wird nur einmal angezeigt. Kopieren Sie ihn sofort in die MCP-Client-Konfiguration und speichern Sie ihn wie ein Passwort. Verlorene Werte können nicht erneut angezeigt werden; erstellen Sie in diesem Fall ein neues Token und widerrufen Sie das alte. Für jedes Token können Sie einzelne Funktionen erlauben oder sperren. Ein Widerruf macht das Token unbrauchbar.
+Nach der Anmeldung erstellen Sie unter **Zugriffstoken** ein benanntes User-Token. Der vollständige Wert wird nur einmal angezeigt. Kopieren Sie ihn sofort in die MCP-Client-Konfiguration und speichern Sie ihn wie ein Passwort. Verlorene Werte können nicht erneut angezeigt werden; erstellen Sie in diesem Fall ein neues Token und widerrufen Sie das alte. Für jedes Token können Sie einzelne Funktionen erlauben oder sperren. Ein Widerruf macht das Token unbrauchbar. Widerrufene Einträge lassen sich anschließend dauerhaft löschen.
 
 Der MCP-Client verbindet sich per Streamable HTTP mit `https://mail-mcp.example.net/mcp` und sendet das User-Token als `Authorization: Bearer <USER_TOKEN>`. Tragen Sie URL und User-Token in die HTTP-MCP-Konfiguration Ihres Clients ein. Die genaue Konfigurationsform hängt vom Client ab. Das statische Verwaltungstoken gehört nicht in den MCP-Client.
 
@@ -163,7 +163,7 @@ Jedes User-Token erhält eigene Rechte. Nur freigegebene Tools werden für diese
 - `set_message_flags`, `copy_message`, `move_message`, `delete_message`, `expunge_messages`
 - `send_email` nur bei konfiguriertem SMTP
 
-Nachrichtenlisten sind seitenweise abrufbar und liefern bis zu 50 Ergebnisse je Aufruf. `read_message` begrenzt die gelesene Nachricht auf 2 MiB und Text- beziehungsweise HTML-Inhalt jeweils auf 100.000 Zeichen; die Antwort kennzeichnet gekürzte Inhalte. Anhänge werden beim Lesen nur als Metadaten ausgegeben und müssen mit `get_attachment` einzeln abgerufen werden. Ein einzelner Anhang ist dabei auf 1 MiB begrenzt. Mailbox-Auflistungen zeigen höchstens 500 Einträge.
+Nachrichtenlisten sind seitenweise abrufbar und liefern bis zu 50 Ergebnisse je Aufruf. Suchanfragen scannen höchstens 100.000 UID-Werte rückwärts; grenzen Sie seltene Suchen bei Bedarf mit Absender, Betreff oder Datum ein. `read_message` begrenzt die gelesene Nachricht auf 2 MiB und Text- beziehungsweise HTML-Inhalt jeweils auf 100.000 Zeichen; die Antwort kennzeichnet gekürzte Inhalte. Anhänge werden beim Lesen nur als Metadaten ausgegeben und müssen mit `get_attachment` einzeln abgerufen werden. Ein einzelner Anhang ist dabei auf 1 MiB begrenzt. Mailbox-Auflistungen zeigen höchstens 500 Einträge.
 
 `delete_message` verschiebt eine Nachricht in einen erkannten Papierkorb. Gibt es keinen erkannten Papierkorb, markiert der Dienst die Nachricht als gelöscht. `expunge_messages` ist eine separate, irreversible Aktion und entfernt im ausgewählten Ordner Nachrichten, die dort als gelöscht markiert sind. `delete_mailbox` löscht den ausgewählten Ordner samt Inhalt.
 

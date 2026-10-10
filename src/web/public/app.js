@@ -14,4 +14,5 @@ document.addEventListener('click', async (event) => {
 
 document.addEventListener('submit', (event) => {
   if (event.target.matches('[data-confirm-revoke]') && !window.confirm('Dieses Token widerrufen? Verbundene Apps verlieren sofort den Zugriff.')) event.preventDefault();
+  if (event.target.matches('[data-confirm-delete]') && !window.confirm('Dieses widerrufene Token und seine Berechtigungen dauerhaft löschen?')) event.preventDefault();
 });

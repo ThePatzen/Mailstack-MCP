@@ -97,6 +97,10 @@ export function revokeToken(accountId: string, tokenId: string): boolean {
   return getDatabase().prepare('UPDATE tokens SET revoked_at = ? WHERE id = ? AND account_id = ? AND revoked_at IS NULL').run(Date.now(), tokenId, accountId).changes > 0;
 }
 
+export function deleteToken(accountId: string, tokenId: string): boolean {
+  return getDatabase().prepare('DELETE FROM tokens WHERE id = ? AND account_id = ? AND revoked_at IS NOT NULL').run(tokenId, accountId).changes > 0;
+}
+
 export function setToolPermission(accountId: string, tokenId: string, toolName: string, allowed: boolean): void {
   if (!/^[a-z][a-z0-9_]{0,99}$/.test(toolName) || typeof allowed !== 'boolean') throw new Error('Invalid tool permission.');
   const db = getDatabase();

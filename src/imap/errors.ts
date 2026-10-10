@@ -1,10 +1,12 @@
-export type ImapErrorCode = 'AUTHENTICATION' | 'PERMISSION' | 'UNSUPPORTED' | 'CONNECTION' | 'TIMEOUT' | 'INVALID_INPUT' | 'NOT_FOUND' | 'TOO_LARGE' | 'INTERNAL';
+export type ImapErrorCode = 'AUTHENTICATION' | 'PERMISSION' | 'UNSUPPORTED' | 'CONNECTION' | 'TIMEOUT' | 'INVALID_INPUT' | 'NOT_FOUND' | 'TOO_LARGE' | 'SEARCH_LIMIT' | 'INTERNAL';
 
 const SAFE_MESSAGES: Record<ImapErrorCode, string> = {
   AUTHENTICATION: 'The mailbox login was rejected.', PERMISSION: 'The mailbox server denied this operation.',
   UNSUPPORTED: 'The mailbox server does not support this operation.', CONNECTION: 'The mailbox server could not complete the operation.',
   TIMEOUT: 'The mailbox server did not respond in time.', INVALID_INPUT: 'The supplied mailbox or message input is invalid.',
-  NOT_FOUND: 'The requested mailbox or message was not found.', TOO_LARGE: 'The requested content exceeds the allowed size.', INTERNAL: 'The mailbox operation failed.',
+  NOT_FOUND: 'The requested mailbox or message was not found.', TOO_LARGE: 'The requested content exceeds the allowed size.',
+  SEARCH_LIMIT: 'The search matched too few messages in the recent mailbox range scanned. Narrow the search with a sender, subject, or date.',
+  INTERNAL: 'The mailbox operation failed.',
 };
 
 export class ImapServiceError extends Error {

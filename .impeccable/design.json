@@ -1,0 +1,45 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-10-10T00:00:00Z",
+  "title": "Design System: Mailstack MCP",
+  "extensions": {
+    "shadows": [
+      { "name": "card-ambient", "value": "0 2px 8px rgba(36, 50, 74, 0.024)", "purpose": "Subtle separation for white cards on the cool gray ground." },
+      { "name": "primary-button", "value": "0 3px 7px rgba(37, 99, 235, 0.145)", "purpose": "Small depth cue for the primary action." }
+    ],
+    "breakpoints": [
+      { "name": "tablet", "value": "900px" },
+      { "name": "mobile", "value": "680px" }
+    ]
+  },
+  "components": [
+    {
+      "name": "Primary Button",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "The main action on a management screen.",
+      "html": "<button class=\"button\">Create token</button>",
+      "css": ".button { display: inline-flex; align-items: center; justify-content: center; min-height: 37px; padding: 0 14px; border: 0; border-radius: 7px; background: #2563eb; color: #fff; font: 600 11px Lato, ui-sans-serif, system-ui, sans-serif; cursor: pointer; } .button:hover { background: #1d4ed8; }"
+    },
+    {
+      "name": "Management Card",
+      "kind": "card",
+      "refersTo": "card",
+      "description": "A white bounded surface for token details and creation controls.",
+      "html": "<section class=\"card\"><strong>Access token</strong><p>Manage permissions for this token.</p></section>",
+      "css": ".card { padding: 19px 20px; border: 1px solid #e7ebf0; border-radius: 10px; background: #fff; color: #182338; box-shadow: 0 2px 8px rgba(36, 50, 74, 0.024); font: 400 12px/1.65 Lato, ui-sans-serif, system-ui, sans-serif; } .card p { color: #778397; }"
+    }
+  ],
+  "narrative": {
+    "northStar": "A calm control surface for personal mailbox access.",
+    "overview": "The management UI follows the user-selected light administration reference. It keeps the mailbox identity and token controls easy to scan, with a compact navigation rail, restrained blue actions, white cards, and clear status labels.",
+    "keyCharacteristics": ["Light neutral page ground", "Compact mailbox-aware navigation", "Blue primary actions and permission switches", "Subtle borders and restrained depth"],
+    "rules": [
+      { "name": "Mailbox-first context", "body": "Keep the connected mailbox identity close to token management.", "section": "layout" },
+      { "name": "One-time secret", "body": "Show the full user token only when created and provide a copy action.", "section": "components" },
+      { "name": "Conditional SMTP", "body": "Expose send permission only when SMTP is configured.", "section": "components" }
+    ],
+    "dos": ["Use blue for primary actions and permission controls.", "Keep each permission labeled and independently operable."],
+    "donts": ["Do not add unrelated dashboard or team navigation.", "Do not use heavy shadows or decorative display type."]
+  }
+}

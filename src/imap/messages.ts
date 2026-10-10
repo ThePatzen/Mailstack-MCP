@@ -1,7 +1,7 @@
 import type { ImapFlow } from 'imapflow';
 import { withImapClient } from './client.js';
 import { findTrashMailbox } from './mailboxes.js';
-import { downloadAttachment, MAX_MESSAGE_BYTES, parseMessage, type MessageContent } from './mime.js';
+import { attachmentParts, downloadAttachment, MAX_MESSAGE_BYTES, parseMessage, type MessageContent } from './mime.js';
 import { ImapServiceError, safely } from './errors.js';
 
 export interface MessagePage { limit: number; beforeUid?: number }
@@ -9,6 +9,7 @@ export interface SearchCriteria { from?: string; to?: string; subject?: string; 
 export interface MessageFlags { seen?: boolean; flagged?: boolean }
 export interface MessageSummary { uid: number; subject: string | null; from: string[]; to: string[]; date: string | null; flags: string[]; size: number | null }
 const UID_SEARCH_CHUNK = 500;
+const MAX_UID_SEARCH_WINDOWS = 200;
 
 function validMailbox(mailbox: string): void {
   if (typeof mailbox !== 'string' || !mailbox.trim() || mailbox.length > 1024 || /[\r\n\0]/.test(mailbox)) throw new ImapServiceError('INVALID_INPUT');
@@ -65,7 +66,10 @@ async function pageMessages(client: ImapFlow, mailbox: string, query: Record<str
     let newestUid = (client.mailbox?.uidNext ?? 1) - 1;
     if (page.beforeUid !== undefined) newestUid = Math.min(newestUid, page.beforeUid - 1);
     const uids: number[] = [];
+    let windowsScanned = 0;
     while (newestUid >= 1 && uids.length < page.limit) {
+      if (windowsScanned >= MAX_UID_SEARCH_WINDOWS) throw new ImapServiceError('SEARCH_LIMIT');
+      windowsScanned += 1;
       const lowUid = Math.max(1, newestUid - UID_SEARCH_CHUNK + 1);
       const result = await client.search({ ...query, uid: `${lowUid}:${newestUid}` } as never, { uid: true });
       if (Array.isArray(result)) {
@@ -93,17 +97,7 @@ export async function readMessage(accountId: string, mailbox: string, uid: numbe
   return safely(() => withImapClient(accountId, async (client) => locked(client, mailbox, async () => {
     const message = await client.fetchOne(String(uid), { uid: true, source: { start: 0, maxLength: MAX_MESSAGE_BYTES }, size: true, bodyStructure: true }, { uid: true });
     if (!message?.source) throw new ImapServiceError('NOT_FOUND');
-    const partIds: string[] = [];
-    const collectParts = (node: typeof message.bodyStructure): void => {
-      if (!node) return;
-      const majorType = node.type?.split('/')[0]?.toLowerCase();
-      if (node.disposition?.toLowerCase() === 'attachment' || (majorType && majorType !== 'text' && majorType !== 'multipart' && !node.disposition)) {
-        partIds.push(node.part ?? '1');
-      }
-      for (const child of node.childNodes ?? []) collectParts(child);
-    };
-    collectParts(message.bodyStructure);
-    const parsed = await parseMessage(uid, message.source, partIds);
+    const parsed = await parseMessage(uid, message.source, attachmentParts(message.bodyStructure));
     if ((message.size ?? 0) > MAX_MESSAGE_BYTES) parsed.truncated = true;
     return parsed;
   })));
