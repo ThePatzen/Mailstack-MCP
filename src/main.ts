@@ -1,10 +1,14 @@
 import { access, constants, stat } from 'node:fs/promises';
 import express from 'express';
 import helmet from 'helmet';
+import { createMcpHandler } from '@modelcontextprotocol/server';
+import { toNodeHandler } from '@modelcontextprotocol/node';
 import { loadConfig } from './config.js';
 import { initializeDatabase, closeDatabase as closeStorageDatabase } from './storage/database.js';
 import { createManagementApp } from './web/app.js';
 import { configureImapService } from './imap/client.js';
+import { authenticateMcpRequest, principalFromAuthInfo } from './http/mcp-auth.js';
+import { buildMcpServer } from './mcp/server.js';
 
 async function verifyDataDirectory(dataDir: string): Promise<void> {
   try {
@@ -27,6 +31,18 @@ async function main(): Promise<void> {
   app.disable('x-powered-by');
   app.use(helmet());
   app.get('/health', (_req, res) => res.status(200).json({ status: 'ok' }));
+  const mcpHandler = createMcpHandler(({ authInfo }) => {
+    const principal = principalFromAuthInfo(authInfo);
+    if (!principal) throw new Error('MCP authentication context is unavailable.');
+    return buildMcpServer(principal);
+  });
+  const handleMcp = toNodeHandler(mcpHandler);
+  app.all('/mcp', authenticateMcpRequest, (req, res) => {
+    void handleMcp(req, res).catch(() => {
+      if (!res.headersSent) res.status(500).json({ error: 'internal_error', message: 'MCP request could not be processed.' });
+      else res.destroy();
+    });
+  });
   app.use(createManagementApp({
     staticTokens: config.staticTokens,
     encryptionKey: config.encryptionKey,
@@ -44,6 +60,7 @@ async function main(): Promise<void> {
     shuttingDown = true;
     process.stdout.write(`Received ${signal}; shutting down.\n`);
     server.close(async (error) => {
+      await mcpHandler.close();
       await closeDatabase();
       if (error) {
         process.stderr.write('HTTP server did not close cleanly.\n');

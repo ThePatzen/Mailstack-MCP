@@ -21,7 +21,8 @@
     "imapflow": "^1.0.190",
     "mailparser": "^3.7.4",
     "nodemailer": "^7.0.3",
-    "tsx": "^4.19.4"
+    "tsx": "^4.19.4",
+    "zod": "^4.1.0"
   },
   "devDependencies": {
     "@types/better-sqlite3": "^7.6.13",
