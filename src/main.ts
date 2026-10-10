@@ -59,8 +59,12 @@ async function main(): Promise<void> {
     if (shuttingDown) return;
     shuttingDown = true;
     process.stdout.write(`Received ${signal}; shutting down.\n`);
+    const closeMcp = mcpHandler.close().catch(() => {
+      process.stderr.write('MCP handler did not close cleanly.\n');
+      process.exitCode = 1;
+    });
     server.close(async (error) => {
-      await mcpHandler.close();
+      await closeMcp;
       await closeDatabase();
       if (error) {
         process.stderr.write('HTTP server did not close cleanly.\n');
