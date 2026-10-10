@@ -8,6 +8,7 @@ export interface MessagePage { limit: number; beforeUid?: number }
 export interface SearchCriteria { from?: string; to?: string; subject?: string; text?: string; since?: string; before?: string; unreadOnly?: boolean; flaggedOnly?: boolean }
 export interface MessageFlags { seen?: boolean; flagged?: boolean }
 export interface MessageSummary { uid: number; subject: string | null; from: string[]; to: string[]; date: string | null; flags: string[]; size: number | null }
+const UID_SEARCH_CHUNK = 500;
 
 function validMailbox(mailbox: string): void {
   if (typeof mailbox !== 'string' || !mailbox.trim() || mailbox.length > 1024 || /[\r\n\0]/.test(mailbox)) throw new ImapServiceError('INVALID_INPUT');
@@ -35,8 +36,14 @@ function searchQuery(criteria: SearchCriteria): Record<string, unknown> {
   const since = dateValue(criteria.since); const before = dateValue(criteria.before);
   if (since) query.since = since;
   if (before) query.before = before;
-  if (criteria.unreadOnly !== undefined) { if (typeof criteria.unreadOnly !== 'boolean') throw new ImapServiceError('INVALID_INPUT'); query.seen = !criteria.unreadOnly; }
-  if (criteria.flaggedOnly !== undefined) { if (typeof criteria.flaggedOnly !== 'boolean') throw new ImapServiceError('INVALID_INPUT'); query.flagged = criteria.flaggedOnly; }
+  if (criteria.unreadOnly !== undefined) {
+    if (typeof criteria.unreadOnly !== 'boolean') throw new ImapServiceError('INVALID_INPUT');
+    if (criteria.unreadOnly) query.seen = false;
+  }
+  if (criteria.flaggedOnly !== undefined) {
+    if (typeof criteria.flaggedOnly !== 'boolean') throw new ImapServiceError('INVALID_INPUT');
+    if (criteria.flaggedOnly) query.flagged = true;
+  }
   if (!Object.keys(query).length) query.all = true;
   return query;
 }
@@ -53,11 +60,23 @@ function summary(message: { uid: number; envelope?: { subject?: string | null; f
 }
 async function pageMessages(client: ImapFlow, mailbox: string, query: Record<string, unknown>, page: MessagePage): Promise<MessageSummary[]> {
   return locked(client, mailbox, async () => {
-    const result = await client.search(query as never, { uid: true });
-    const uids = (Array.isArray(result) ? result : []).filter((uid) => Number.isSafeInteger(uid) && uid > 0 && (page.beforeUid === undefined || uid < page.beforeUid)).sort((a, b) => b - a).slice(0, page.limit);
+    // Walk newest-to-oldest in fixed UID windows. The server returns at most
+    // one window of UIDs per SEARCH, even when the mailbox contains millions.
+    let newestUid = (client.mailbox?.uidNext ?? 1) - 1;
+    if (page.beforeUid !== undefined) newestUid = Math.min(newestUid, page.beforeUid - 1);
+    const uids: number[] = [];
+    while (newestUid >= 1 && uids.length < page.limit) {
+      const lowUid = Math.max(1, newestUid - UID_SEARCH_CHUNK + 1);
+      const result = await client.search({ ...query, uid: `${lowUid}:${newestUid}` } as never, { uid: true });
+      if (Array.isArray(result)) {
+        const matches = result.filter((uid) => Number.isSafeInteger(uid) && uid >= lowUid && uid <= newestUid).sort((a, b) => b - a);
+        uids.push(...matches.slice(0, page.limit - uids.length));
+      }
+      newestUid = lowUid - 1;
+    }
     if (!uids.length) return [];
     const messages = await client.fetchAll(uids, { uid: true, envelope: true, flags: true, size: true, internalDate: true }, { uid: true });
-    return messages.map(summary);
+    return messages.map(summary).sort((left, right) => right.uid - left.uid);
   });
 }
 

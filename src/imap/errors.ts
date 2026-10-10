@@ -19,14 +19,14 @@ export function mapImapError(error: unknown): ImapServiceError {
   const value = error && typeof error === 'object' ? error as Record<string, unknown> : {};
   const code = String(value.code ?? '').toLowerCase();
   const response = String(value.response ?? value.responseText ?? '').toLowerCase();
-  const responseCode = String(value.responseStatus ?? value.responseCode ?? '').toLowerCase();
+  const serverCode = String(value.serverResponseCode ?? '').toLowerCase();
   const name = String(value.name ?? '').toLowerCase();
-  if (/auth|login|invalidcredentials/.test(code) || /authentication failed|authenticationfailed|login failed/.test(response)) return new ImapServiceError('AUTHENTICATION');
-  if (/nonexistent|notfound/.test(code) || /nonexistent|no such mailbox|no such message/.test(response)) return new ImapServiceError('NOT_FOUND');
-  if (/permission|denied|forbidden|noperm/.test(code) || /permission denied|not permitted|access denied/.test(response)) return new ImapServiceError('PERMISSION');
-  if (/unsupported|missingserverextension/.test(code) || /unsupported|unknown command|not implemented/.test(response) || responseCode === 'bad') return new ImapServiceError('UNSUPPORTED');
+  if (value.authenticationFailed === true || /auth|login|invalidcredentials/.test(code) || /authenticationfailed|authentication failed|login failed/.test(response) || serverCode === 'authenticationfailed') return new ImapServiceError('AUTHENTICATION');
+  if (/nonexistent|notfound/.test(code) || /nonexistent|no such mailbox|no such message/.test(response) || serverCode === 'nonexistent') return new ImapServiceError('NOT_FOUND');
+  if (/permission|denied|forbidden|noperm/.test(code) || /permission denied|not permitted|access denied/.test(response) || serverCode === 'noperm') return new ImapServiceError('PERMISSION');
+  if (/unsupported|missingserverextension/.test(code) || /unsupported|unknown command|not implemented/.test(response) || /^(?:cannot|notsupported)$/.test(serverCode)) return new ImapServiceError('UNSUPPORTED');
   if (/timeout|etimedout/.test(code) || name.includes('timeout')) return new ImapServiceError('TIMEOUT');
-  if (/econn|enet|ehost|epipe|closed|socket|tls|certificate/.test(code) || name.includes('connection')) return new ImapServiceError('CONNECTION');
+  if (/noconnection|econn|enet|ehost|epipe|closed|socket|tls|certificate/.test(code) || name.includes('connection')) return new ImapServiceError('CONNECTION');
   return new ImapServiceError('INTERNAL');
 }
 
