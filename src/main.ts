@@ -4,6 +4,7 @@ import helmet from 'helmet';
 import { loadConfig } from './config.js';
 import { initializeDatabase, closeDatabase as closeStorageDatabase } from './storage/database.js';
 import { createManagementApp } from './web/app.js';
+import { configureImapService } from './imap/client.js';
 
 async function verifyDataDirectory(dataDir: string): Promise<void> {
   try {
@@ -17,6 +18,7 @@ async function verifyDataDirectory(dataDir: string): Promise<void> {
 
 async function main(): Promise<void> {
   const config = loadConfig(process.env);
+  configureImapService(config);
   await verifyDataDirectory(config.dataDir);
   initializeDatabase(config.dataDir, config.encryptionKey);
   registerDatabaseCloser(closeStorageDatabase);
