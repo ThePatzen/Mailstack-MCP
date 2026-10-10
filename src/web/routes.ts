@@ -150,9 +150,6 @@ export function createManagementRouter(deps: WebDependencies): Router {
     }
     try {
       const created = createUserToken(management.accountId, label);
-      for (const tool of TOOL_NAMES) {
-        if (tool !== 'send_email' || deps.smtpConfigured) setToolPermission(management.accountId, created.summary.id, tool, false);
-      }
       const account = getAccountCredentials(management.accountId);
       (req as ManagementRequest).accountUsername = account?.username;
       renderTokens(req, res, deps, { notice: 'Token erstellt. Kopieren Sie ihn jetzt; danach wird er nicht erneut angezeigt.', oneTimeToken: created.token });
