@@ -1,0 +1,35 @@
+@font-face {
+  font-family: Lato;
+  src: url('/manage/assets/fonts/lato-regular.ttf') format('truetype');
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: Lato;
+  src: url('/manage/assets/fonts/lato-semibold.ttf') format('truetype');
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: Lato;
+  src: url('/manage/assets/fonts/lato-bold.ttf') format('truetype');
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+}
+
+:root {
+  font-family: Lato, ui-sans-serif, system-ui, sans-serif;
+}
+
+.brand,
+.page-heading h1,
+.login-card h1,
+.panel-heading h2,
+.section-heading h2 {
+  font-family: Lato, ui-sans-serif, system-ui, sans-serif;
+}

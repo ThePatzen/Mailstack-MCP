@@ -1,0 +1,36 @@
+{
+  "name": "mailstack-mcp",
+  "version": "0.1.0",
+  "private": true,
+  "description": "A per-user MCP gateway for Dovecot IMAP with optional SMTP",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "start": "tsx src/main.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/node": "^2.0.0",
+    "@modelcontextprotocol/server": "^2.0.0",
+    "better-sqlite3": "^12.0.0",
+    "ejs": "^3.1.10",
+    "express": "^5.1.0",
+    "express-rate-limit": "^7.5.0",
+    "helmet": "^8.1.0",
+    "imapflow": "^1.0.190",
+    "mailparser": "^3.7.4",
+    "nodemailer": "^7.0.3",
+    "tsx": "^4.19.4",
+    "zod": "^4.1.0"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "^7.6.13",
+    "@types/ejs": "^3.1.5",
+    "@types/express": "^5.0.3",
+    "@types/mailparser": "^3.4.4",
+    "@types/node": "^22.15.30",
+    "@types/nodemailer": "^6.4.17",
+    "typescript": "^5.8.3"
+  }
+}

@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <title>Zugriffstoken · Mailstack MCP</title>
+  <link rel="stylesheet" href="/manage/assets/app.css">
+  <link rel="stylesheet" href="/manage/assets/typography.css">
+</head>
+<body>
+  <div class="app-shell">
+    <aside class="sidebar" aria-label="Hauptnavigation">
+      <a class="brand" href="/manage/tokens"><span class="brand-mark" aria-hidden="true">M</span><span>Mailstack MCP</span></a>
+      <div class="side-label">POSTFACH</div>
+      <div class="mailbox-card"><span class="mailbox-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="m4 7 8 6 8-6"/></svg></span><span class="mailbox-copy"><strong>Verbunden</strong><small><%= username %></small></span><span class="connected-dot" aria-label="Verbunden"></span></div>
+      <a class="nav-item nav-active" href="/manage/tokens" aria-current="page"><span aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="5" y="4" width="14" height="17" rx="2"/><path d="M9 4.5h6M9 9h6M9 13h6M9 17h4"/></svg></span> Zugriffstoken</a>
+      <div class="sidebar-spacer"></div>
+      <form method="post" action="/manage/logout">
+        <input type="hidden" name="_csrf" value="<%= csrf %>">
+        <button class="nav-item nav-button" type="submit"><span aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M10 4H5v16h5M14 8l4 4-4 4M8 12h10"/></svg></span> Abmelden</button>
+      </form>
+      <div class="sidebar-footer">Persönlicher Mailzugriff</div>
+    </aside>
+    <main class="main-content">
+      <header class="topbar"><div class="breadcrumbs"><span>Verwaltung</span><span class="crumb-separator">/</span><strong>Zugriffstoken</strong></div><div class="user-chip"><span class="avatar"><%= (username || 'M').slice(0, 1).toUpperCase() %></span><span><%= username %></span></div></header>
+      <section class="page-heading">
+        <div><div class="eyebrow">ZUGRIFF VERWALTEN</div><h1>Zugriffstoken</h1><p class="muted">Steuern Sie, welche Mailfunktionen Ihre verbundenen Apps nutzen dürfen.</p></div>
+        <a href="#create-token" class="button button-primary">Token erstellen</a>
+      </section>
+      <% if (notice) { %><div class="alert alert-info" role="status"><%= notice %></div><% } %>
+      <% if (oneTimeToken) { %>
+        <section class="one-time-card" aria-labelledby="new-token-title">
+          <div class="one-time-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="m5 12 4 4L19 6"/></svg></div>
+          <div class="one-time-copy"><h2 id="new-token-title">Ihr neues Token ist bereit</h2><p>Kopieren Sie es jetzt. Aus Sicherheitsgründen wird der vollständige Wert später nicht mehr angezeigt.</p><div class="token-copy-row"><code id="new-token-value"><%= oneTimeToken %></code><button class="button button-secondary" type="button" data-copy-token>Kopieren</button></div><span class="copy-feedback" aria-live="polite"></span></div>
+        </section>
+      <% } %>
+      <section id="create-token" class="panel create-panel" aria-labelledby="create-title">
+        <div class="panel-heading"><div><h2 id="create-title">Neues Token</h2><p class="muted">Geben Sie dem Zugriff einen Namen, den Sie wiedererkennen.</p></div></div>
+        <form class="create-form" method="post" action="/manage/tokens">
+          <input type="hidden" name="_csrf" value="<%= csrf %>">
+          <label class="sr-only" for="token-label">Tokenname</label>
+          <input id="token-label" name="label" type="text" maxlength="100" placeholder="z. B. Desktop-Assistent" value="<%= labelValue %>" required>
+          <button class="button button-primary" type="submit">Token erstellen</button>
+        </form>
+      </section>
+      <section class="token-section" aria-labelledby="tokens-title">
+        <div class="section-heading"><div><h2 id="tokens-title">Ihre Token</h2><p class="muted">Jedes Token hat eigene Berechtigungen und kann einzeln widerrufen werden.</p></div><span class="count-pill"><%= tokens.length %> <%= tokens.length === 1 ? 'Token' : 'Token' %></span></div>
+        <% if (!tokens.length) { %>
+          <div class="empty-state"><h3>Noch keine Token</h3><p>Erstellen Sie ein Token, um einer MCP-App kontrollierten Zugriff auf Ihr Postfach zu geben.</p></div>
+        <% } else { %>
+          <div class="token-list">
+            <% tokens.forEach((token) => { %>
+              <article class="token-card <%= token.revokedAt ? 'token-revoked' : '' %>">
+                <div class="token-row">
+                  <div class="token-symbol" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="8" cy="15" r="4"/><path d="m11 12 8-8 2 2-2 2 2 2-3 3-2-2-3 3"/></svg></div>
+                  <div class="token-main"><div class="token-title-line"><h3><%= token.label %></h3><span class="state-pill <%= token.revokedAt ? 'state-revoked' : 'state-active' %>"><span class="state-dot"></span><%= token.revokedAt ? 'Widerrufen' : 'Aktiv' %></span></div><div class="token-meta"><span>Erstellt <time datetime="<%= new Date(token.createdAt).toISOString() %>"><%= new Date(token.createdAt).toLocaleDateString('de-AT') %></time></span><span class="meta-divider">·</span><span>Zuletzt verwendet <%= token.lastUsedAt ? new Date(token.lastUsedAt).toLocaleString('de-AT') : 'Noch nie' %></span></div></div>
+                  <div class="token-actions"><details class="permission-details"><summary><span aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M9 6h11M9 12h11M9 18h11"/><circle cx="4" cy="6" r=".8" fill="currentColor"/><circle cx="4" cy="12" r=".8" fill="currentColor"/><circle cx="4" cy="18" r=".8" fill="currentColor"/></svg></span> Berechtigungen</summary><div class="permission-popover"><strong>Token-Berechtigungen</strong><p>Schalten Sie einzelne Funktionen frei.</p><div class="permission-list">
+                    <% toolNames.forEach((tool) => { const enabled = token.permissions[tool] === true; %>
+                      <div class="permission-row"><span><%= toolLabels[tool] %></span><form method="post" action="/manage/tokens/<%= token.id %>/permissions/<%= tool %>"><input type="hidden" name="_csrf" value="<%= csrf %>"><input type="hidden" name="allowed" value="<%= enabled ? 'false' : 'true' %>"><button class="switch <%= enabled ? 'switch-on' : '' %>" type="submit" <%= token.revokedAt ? 'disabled' : '' %> role="switch" aria-checked="<%= enabled %>" aria-label="<%= enabled ? 'Deaktivieren' : 'Aktivieren' %>: <%= toolLabels[tool] %>"><span></span></button></form></div>
+                    <% }) %>
+                  </div></div></details>
+                  <% if (!token.revokedAt) { %><form method="post" action="/manage/tokens/<%= token.id %>/revoke" data-confirm-revoke><input type="hidden" name="_csrf" value="<%= csrf %>"><button class="button button-danger-quiet" type="submit">Widerrufen</button></form><% } else { %><form method="post" action="/manage/tokens/<%= token.id %>/delete" data-confirm-delete><input type="hidden" name="_csrf" value="<%= csrf %>"><button class="button button-danger-quiet" type="submit">Löschen</button></form><% } %>
+                  </div>
+                </div>
+                <details class="token-permissions-inline"><summary>Berechtigungen ansehen</summary><div class="permission-grid"><% toolNames.forEach((tool) => { %><span class="permission-chip <%= token.permissions[tool] === true ? 'permission-allowed' : '' %>"><span class="permission-state" aria-hidden="true"></span><%= toolLabels[tool] %></span><% }) %></div></details>
+              </article>
+            <% }) %>
+          </div>
+        <% } %>
+      </section>
+      <footer class="content-footer"><span>Token-Werte werden nur einmal bei der Erstellung angezeigt.</span><svg class="footer-lock" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="5" y="10" width="14" height="11" rx="2"/><path d="M8 10V7a4 4 0 1 1 8 0v3M12 14v3"/></svg></footer>
+    </main>
+  </div>
+  <script src="/manage/assets/app.js" defer></script>
+</body>
+</html>

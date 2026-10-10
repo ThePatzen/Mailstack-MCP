@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <title>Anmelden · Mailstack MCP</title>
+  <link rel="stylesheet" href="/manage/assets/app.css">
+  <link rel="stylesheet" href="/manage/assets/typography.css">
+</head>
+<body class="login-page">
+  <main class="login-shell">
+    <a class="brand" href="/manage" aria-label="Mailstack MCP Startseite">
+      <span class="brand-mark" aria-hidden="true">M</span>
+      <span>Mailstack MCP</span>
+    </a>
+    <section class="login-card" aria-labelledby="page-title">
+      <div class="eyebrow">Sicherer Zugang</div>
+      <h1 id="page-title">Postfach verbinden</h1>
+      <p class="muted">Melden Sie sich mit Ihrem Mailserver-Konto an, um persönliche MCP-Zugriffstoken zu verwalten.</p>
+      <% if (error) { %><div class="alert alert-error" role="alert"><%= error %></div><% } %>
+      <form method="post" action="/manage/login" autocomplete="on">
+        <input type="hidden" name="_csrf" value="<%= csrf %>">
+        <label for="staticToken">Verwaltungstoken</label>
+        <input id="staticToken" name="staticToken" type="password" autocomplete="current-password" required>
+        <p class="field-note">Der Betreiber stellt dieses Token bereit.</p>
+        <label for="username">E-Mail oder IMAP-Benutzername</label>
+        <input id="username" name="username" type="text" value="<%= username %>" autocomplete="username" autocapitalize="none" spellcheck="false" required>
+        <label for="password">IMAP-Passwort</label>
+        <input id="password" name="password" type="password" autocomplete="current-password" required>
+        <button class="button button-primary button-wide" type="submit">Sicher anmelden</button>
+      </form>
+      <p class="login-footnote"><span class="status-dot" aria-hidden="true"></span> Die Verbindung zum Mailserver wird verschlüsselt hergestellt.</p>
+    </section>
+    <p class="page-caption">Ihr Postfachzugriff bleibt an Ihr persönliches Konto gebunden.</p>
+  </main>
+</body>
+</html>
