@@ -23,6 +23,7 @@ const sendEmailOutput = z.object({
   messageId: z.string(),
   sent: z.literal(true),
   archived: z.boolean(),
+  rejectedRecipients: z.number().int().nonnegative().optional(),
   archiveError: z.string().optional(),
 });
 

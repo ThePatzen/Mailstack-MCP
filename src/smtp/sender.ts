@@ -28,6 +28,7 @@ export interface SendEmailResult {
   messageId: string;
   sent: true;
   archived: boolean;
+  rejectedRecipients?: number;
   archiveError?: string;
 }
 
@@ -175,6 +176,7 @@ export async function sendAndArchive(accountId: string, input: SendEmailInput): 
       disableUrlAccess: true,
       maxRecipients: MAX_RECIPIENTS,
     });
+    let rejectedRecipients = 0;
     try {
       const info = await transporter.sendMail({
         raw: rawMessage,
@@ -184,6 +186,7 @@ export async function sendAndArchive(accountId: string, input: SendEmailInput): 
       });
       const accepted = Array.isArray(info.accepted) && info.accepted.length > 0;
       if (!accepted) throw new ImapServiceError('CONNECTION', 'The SMTP server did not accept the message.');
+      rejectedRecipients = Array.isArray(info.rejected) ? info.rejected.length : 0;
     } catch (error) {
       throw error instanceof ImapServiceError ? error : safeSmtpError(error);
     } finally {
@@ -194,12 +197,13 @@ export async function sendAndArchive(accountId: string, input: SendEmailInput): 
     // never attempt a second SMTP transaction as an archival recovery strategy.
     try {
       await client.append(sentFolder, rawMessage, { flags: ['\\Seen'] });
-      return { messageId, sent: true, archived: true };
+      return { messageId, sent: true, archived: true, rejectedRecipients };
     } catch {
       return {
         messageId,
         sent: true,
         archived: false,
+        rejectedRecipients,
         archiveError: 'The message was sent, but could not be archived in Sent.',
       };
     }
