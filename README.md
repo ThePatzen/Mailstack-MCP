@@ -135,9 +135,11 @@ Stoppen Sie den Container vor einem konsistenten Dateikopier-Backup oder verwend
 
 ```sh
 docker compose stop mailstack-mcp
-cp -a "${DATA_DIR:-./data}" ./data-backup
+cp -a ./data ./data-backup
 docker compose start mailstack-mcp
 ```
+
+Der Beispielbefehl setzt `DATA_DIR=./data` voraus. Wenn Sie in `.env` einen anderen `DATA_DIR` gesetzt haben, ersetzen Sie `./data` durch genau diesen Host-Pfad; Docker Compose exportiert Werte aus `.env` nicht in Ihre Shell.
 
 ## Anmeldung und User-Token
 
@@ -165,7 +167,7 @@ Nachrichtenlisten sind seitenweise abrufbar und liefern bis zu 50 Ergebnisse je 
 
 `delete_message` verschiebt eine Nachricht in einen erkannten Papierkorb. Gibt es keinen erkannten Papierkorb, markiert der Dienst die Nachricht als gelöscht. `expunge_messages` ist eine separate, irreversible Aktion und entfernt im ausgewählten Ordner Nachrichten, die dort als gelöscht markiert sind. `delete_mailbox` löscht den ausgewählten Ordner samt Inhalt.
 
-Bei `send_email` sind bis zu 100 Empfänger und 10 Anhänge erlaubt; Anhänge dürfen zusammen höchstens 5 MiB groß sein. Der Nachrichtentext ist auf 100.000 Zeichen je Text- beziehungsweise HTML-Feld begrenzt. Nach erfolgreicher Annahme durch SMTP legt der Dienst dieselben MIME-Daten einmal im Sent-Ordner ab. Schlägt dieses Archivieren fehl, meldet das Tool `sent: true` und `archived: false`. Senden Sie in diesem Fall nicht automatisch erneut, da die Nachricht bereits versendet wurde.
+Bei `send_email` sind bis zu 100 Empfänger und 10 Anhänge erlaubt; Anhänge dürfen zusammen höchstens 5 MiB groß sein. Der Nachrichtentext ist auf 100.000 Zeichen je Text- beziehungsweise HTML-Feld begrenzt. Nach erfolgreicher Annahme durch SMTP legt der Dienst dieselben MIME-Daten einmal im Sent-Ordner ab. Der SMTP-Server kann einzelne Empfänger ablehnen und andere annehmen: In diesem Fall bleibt `sent: true`, und `rejectedRecipients` nennt die Anzahl der abgelehnten Empfänger. Prüfen Sie diese Zahl separat; `sent: true` bedeutet nicht, dass alle Empfänger angenommen wurden. Schlägt das Archivieren fehl, meldet das Tool außerdem `archived: false`. Senden Sie in beiden Fällen nicht automatisch erneut, da die Nachricht bereits an mindestens einen Empfänger versendet worden sein kann.
 
 ## Betrieb
 
