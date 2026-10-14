@@ -12,6 +12,7 @@ Use this workflow only for an explicit release request. A request to draft or re
 1. Confirm the repository is on `main`, tracks `origin/main`, and has a clean working tree. Fetch `origin/main` and tags; stop if local `main` is behind or has diverged from `origin/main`.
 2. Read `package.json` and `package-lock.json`; confirm their versions match. Determine the next patch version and confirm its `vX.Y.Z` tag does not already exist. Stop on mismatches, an existing tag, or a version format you cannot safely increment.
 3. Find the latest release tag. Review commit subjects and diffs from that tag through `HEAD`; if no release tag exists, review the repository history and identify the initial release scope. Do not infer user-visible changes from commit subjects alone.
+4. Confirm the GitHub CLI is installed and authenticated for this repository with `gh auth status`, so the GitHub Release can be created after the tag is pushed.
 
 ## Prepare the changelog
 
@@ -48,5 +49,13 @@ git push origin vX.Y.Z
 ```
 
 Replace `vX.Y.Z` with the exact tag created by `npm version`. Verify that `origin/main` and the remote tag point to the intended release commit. If either push fails or only one succeeds, report the partial state and stop; inspect remote refs before any retry. Do not claim publication succeeded unless the remote tag and branch were verified.
+
+After the remote branch and tag are verified, create a GitHub Release for `vX.Y.Z`. Use the exact content of that version's `CHANGELOG.md` entry as the release notes: include its `Added`, `Changed`, and `Fixed` headings and bullets verbatim, and omit only the changelog's version/date heading. Do not write a separate summary. Save that entry content to a temporary notes file and run:
+
+```sh
+gh release create vX.Y.Z --title "vX.Y.Z" --notes-file /tmp/mailstack-release-notes.md
+```
+
+Verify the release with `gh release view vX.Y.Z` and confirm its tag and notes match the changelog entry. If creation or verification fails, report the branch/tag and GitHub Release status separately; do not claim the GitHub Release exists.
 
 The pushed tag triggers `.github/workflows/publish-dockerhub.yml`. Report the image tags as pending until the GitHub Actions run confirms publication.
