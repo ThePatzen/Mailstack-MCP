@@ -1,8 +1,9 @@
-import { createHash } from 'node:crypto';
+import { createHash, createHmac, randomInt, timingSafeEqual } from 'node:crypto';
 import { Router, urlencoded, type Request, type Response } from 'express';
 import rateLimit, { ipKeyGenerator } from 'express-rate-limit';
 import { encryptSecret } from '../security/crypto.js';
-import { createOrUpdateAccount, createUserToken, deleteToken, findSession, getAccountCredentials, listTokens, revokeToken, setToolPermission } from '../storage/repository.js';
+import { sendManagementLoginCode } from '../smtp/system-mail.js';
+import { consumeEmailLoginChallenge, createEmailLoginChallenge, invalidateEmailLoginChallenge, createOrUpdateAccount, createUserToken, deleteToken, findSession, getAccountCredentials, listTokens, revokeToken, setToolPermission } from '../storage/repository.js';
 import { createMailstackPluginArchive } from './plugin-package.js';
 import { verifyImapLogin, verifyStaticToken } from './auth.js';
 import type { WebDependencies } from './app.js';
@@ -33,16 +34,59 @@ function setNoStore(res: Response): void {
   res.setHeader('Pragma', 'no-cache');
 }
 
-function accountKey(req: Request): string {
-  const username = safeText(req.body?.username, 1024).toLocaleLowerCase('en-US');
+type LoginMethod = 'email' | 'token';
+interface LoginOptions {
+  error: string;
+  username: string;
+  method?: LoginMethod;
+  challengeId?: string;
+}
+
+const LOGIN_FAILED = 'Die Anmeldung ist fehlgeschlagen. Bitte prüfen Sie Ihre Angaben und versuchen Sie es erneut.';
+const CODE_FAILED = 'Der Code ist ungültig oder abgelaufen. Versuchen Sie es erneut oder fordern Sie einen neuen Code an.';
+
+function boundedInput(value: unknown, max: number): string {
+  return typeof value === 'string' && value.length <= max && !/[\r\n\0]/.test(value) ? value : '';
+}
+
+function emailLoginCsrf(challengeId: string, username: string, key: Buffer, nonce: string): string {
+  const digest = createHmac('sha256', key)
+    .update('mailstack-email-login-csrf:')
+    .update(JSON.stringify([nonce, challengeId, username]))
+    .digest('base64url');
+  return `${nonce}.${digest}`;
+}
+
+function validEmailLoginContext(req: Request, key: Buffer): boolean {
+  const token = req.body?._csrf;
+  const challengeId = boundedInput(req.body?.challengeId, 43);
+  const username = boundedInput(req.body?.username, 1024);
+  if (typeof token !== 'string' || !/^[A-Za-z0-9_-]{43}\.[A-Za-z0-9_-]{43}$/.test(token) ||
+      !/^[A-Za-z0-9_-]{43}$/.test(challengeId) || !username) return false;
+  const expected = emailLoginCsrf(challengeId, username, key, token.slice(0, 43));
+  return timingSafeEqual(Buffer.from(token), Buffer.from(expected));
+}
+
+function accountKey(req: Request, encryptionKey: Buffer): string {
+  // The code step's account key is bound to the challenge, so changing the hidden username cannot evade its limiter.
+  const isCodeVerification = req.path === '/manage/login/verify-code';
+  const username = !isCodeVerification || validEmailLoginContext(req, encryptionKey)
+    ? safeText(req.body?.username, 1024).toLocaleLowerCase('en-US') : '';
   return createHash('sha256').update(username || `missing:${ipKeyGenerator(req.ip ?? 'unknown')}`).digest('hex');
 }
 
-function renderLogin(res: Response, options: { error: string; username: string }): void {
-  const csrf = createLoginCsrfToken();
+function renderLogin(res: Response, deps: WebDependencies, options: LoginOptions): void {
+  const emailAvailable = Boolean(deps.smtp && deps.systemMail);
+  const method = emailAvailable && options.method !== 'token' ? 'email' : 'token';
+  const challengeId = method === 'email' ? options.challengeId ?? '' : '';
+  const accountUsername = options.username.toLocaleLowerCase('en-US');
+  const nonce = createLoginCsrfToken();
+  const csrf = challengeId ? emailLoginCsrf(challengeId, accountUsername, deps.encryptionKey, nonce) : nonce;
   res.cookie(LOGIN_CSRF_COOKIE, csrf, { ...COOKIE_OPTIONS, maxAge: 15 * 60 * 1000 });
   setNoStore(res);
-  res.status(options.error ? 401 : 200).render('login', { ...options, csrf });
+  res.status(options.error ? 401 : 200).render('login', {
+    ...options, emailAvailable, method, challengeId, accountUsername, csrf,
+  });
 }
 
 function readCookie(req: Request, name: string): string | undefined {
@@ -95,11 +139,12 @@ function renderTokens(req: Request, res: Response, deps: WebDependencies, option
 
 export function createManagementRouter(deps: WebDependencies): Router {
   const router = Router();
+  router.use('/manage', (_req, res, next) => { setNoStore(res); next(); });
   router.use('/manage', urlencoded({ extended: false, limit: '16kb' }));
   const ipLimiter = rateLimit({ windowMs: 15 * 60 * 1000, limit: 30, standardHeaders: true, legacyHeaders: false, message: 'Too many sign-in attempts. Please wait and try again.' });
   const accountLimiter = rateLimit({
     windowMs: 15 * 60 * 1000, limit: 8, standardHeaders: true, legacyHeaders: false,
-    keyGenerator: accountKey,
+    keyGenerator: (req) => accountKey(req, deps.encryptionKey),
     message: 'Too many sign-in attempts for this account. Please wait and try again.',
   });
   const loggedIn = requireManagementSession;
@@ -116,20 +161,20 @@ export function createManagementRouter(deps: WebDependencies): Router {
         return;
       }
     }
-    renderLogin(res, { error: '', username: '' });
+    renderLogin(res, deps, { error: '', username: '', method: req.query.method === 'token' ? 'token' : 'email' });
   });
 
   router.post('/manage/login', ipLimiter, accountLimiter, async (req, res) => {
     const username = safeText(req.body?.username, 1024);
     if (!verifyLoginCsrfToken(readCookie(req, LOGIN_CSRF_COOKIE), req.body?._csrf)) {
-      renderLogin(res, { error: 'Die Anmeldung ist abgelaufen. Bitte versuchen Sie es erneut.', username });
+      renderLogin(res, deps, { error: 'Die Anmeldung ist abgelaufen. Bitte versuchen Sie es erneut.', username, method: 'token' });
       return;
     }
     res.clearCookie(LOGIN_CSRF_COOKIE, COOKIE_OPTIONS);
     const staticToken = typeof req.body?.staticToken === 'string' ? req.body.staticToken : '';
     const password = typeof req.body?.password === 'string' ? req.body.password : '';
     if (!verifyStaticToken(staticToken, deps.staticTokens)) {
-      renderLogin(res, { error: 'Die Anmeldung ist fehlgeschlagen. Bitte prüfen Sie Ihre Angaben.', username });
+      renderLogin(res, deps, { error: LOGIN_FAILED, username, method: 'token' });
       return;
     }
     try {
@@ -139,7 +184,75 @@ export function createManagementRouter(deps: WebDependencies): Router {
       issueCookie(res, sessionId);
       res.redirect(303, '/manage/tokens');
     } catch {
-      renderLogin(res, { error: 'Die Anmeldung ist fehlgeschlagen. Bitte prüfen Sie Ihre Angaben.', username });
+      renderLogin(res, deps, { error: LOGIN_FAILED, username, method: 'token' });
+    }
+  });
+
+  router.post('/manage/login/code', ipLimiter, accountLimiter, async (req, res) => {
+    const requestTime = Date.now();
+    const username = boundedInput(req.body?.username, 320).trim();
+    if (!verifyLoginCsrfToken(readCookie(req, LOGIN_CSRF_COOKIE), req.body?._csrf)) {
+      renderLogin(res, deps, { error: 'Die Anmeldung ist abgelaufen. Bitte versuchen Sie es erneut.', username, method: 'email' });
+      return;
+    }
+    res.clearCookie(LOGIN_CSRF_COOKIE, COOKIE_OPTIONS);
+    if (!deps.smtp || !deps.systemMail) {
+      renderLogin(res, deps, { error: 'Die Anmeldung per E-Mail-Code ist derzeit nicht verfügbar. Verwenden Sie ein Verwaltungstoken.', username, method: 'token' });
+      return;
+    }
+    const password = boundedInput(req.body?.password, 4096);
+    if (!username || !password || /[\s<>(),;]/.test(username) || !/^[^@]+@[^@.]+(?:\.[^@.]+)+$/.test(username)) {
+      renderLogin(res, deps, { error: LOGIN_FAILED, username, method: 'email' });
+      return;
+    }
+    let challengeId: string | undefined;
+    try {
+      await verifyImapLogin(username, password, deps.imap);
+      const code = randomInt(0, 1_000_000).toString().padStart(6, '0');
+      const expiresAt = requestTime + 600_000;
+      challengeId = createEmailLoginChallenge({
+        username,
+        encryptedPassword: encryptSecret(password, deps.encryptionKey),
+        code,
+        expiresAt,
+        encryptionKey: deps.encryptionKey,
+      });
+      await sendManagementLoginCode({ smtp: deps.smtp, systemMail: deps.systemMail }, username, code, expiresAt);
+    } catch {
+      if (challengeId) invalidateEmailLoginChallenge(challengeId, deps.encryptionKey);
+      renderLogin(res, deps, { error: LOGIN_FAILED, username, method: 'email' });
+      return;
+    }
+    renderLogin(res, deps, { error: '', username, method: 'email', challengeId });
+  });
+
+  router.post('/manage/login/verify-code', ipLimiter, accountLimiter, (req, res) => {
+    const username = boundedInput(req.body?.username, 1024);
+    const challengeId = boundedInput(req.body?.challengeId, 43);
+    if (!deps.smtp || !deps.systemMail ||
+        !verifyLoginCsrfToken(readCookie(req, LOGIN_CSRF_COOKIE), req.body?._csrf) ||
+        !validEmailLoginContext(req, deps.encryptionKey)) {
+      renderLogin(res, deps, { error: 'Die Anmeldung ist abgelaufen. Bitte fordern Sie einen neuen Code an.', username, method: 'email' });
+      return;
+    }
+    res.clearCookie(LOGIN_CSRF_COOKIE, COOKIE_OPTIONS);
+    try {
+      const credentials = consumeEmailLoginChallenge({
+        challengeId,
+        code: boundedInput(req.body?.code, 6),
+        now: Date.now(),
+        encryptionKey: deps.encryptionKey,
+      });
+      if (!credentials) {
+        renderLogin(res, deps, { error: CODE_FAILED, username, method: 'email', challengeId });
+        return;
+      }
+      const account = createOrUpdateAccount(credentials.username, credentials.encryptedPassword);
+      const sessionId = createManagementSession(account.id);
+      issueCookie(res, sessionId);
+      res.redirect(303, '/manage/tokens');
+    } catch {
+      renderLogin(res, deps, { error: LOGIN_FAILED, username, method: 'email' });
     }
   });
 

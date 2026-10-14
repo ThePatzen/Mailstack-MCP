@@ -7,3 +7,19 @@
 @media(max-width:900px){.setup-columns{grid-template-columns:1fr}.setup-step{max-width:620px}}
 @media(max-width:680px){.setup-panel{padding:16px}.setup-columns{gap:13px}.setup-step .button{white-space:normal;height:auto;min-height:34px;padding:7px 9px}}
 .mailbox-icon svg{width:16px;height:16px}.nav-item>span svg{width:16px;height:16px;display:block}.one-time-icon svg{width:14px;height:14px}.token-symbol svg{width:17px;height:17px}.permission-details summary>span svg{width:14px;height:14px;display:block}.footer-lock{width:14px;height:14px}.permission-state{width:12px;height:12px;display:inline-block;position:relative;flex:none;border:1px solid #b8c0cb;border-radius:50%}.permission-allowed .permission-state{border-color:#15803d;background:#15803d}.permission-allowed .permission-state::after{content:"";position:absolute;width:5px;height:3px;left:2px;top:3px;border-left:1.5px solid #fff;border-bottom:1.5px solid #fff;transform:rotate(-45deg)}
+
+.login-methods{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:4px;padding:4px;margin:0 0 18px;border:1px solid var(--line);border-radius:8px;background:var(--ground)}
+.login-methods a{display:flex;align-items:center;justify-content:center;min-height:37px;padding:7px 8px;border-radius:7px;color:var(--ink);font-size:12px;font-weight:600;text-align:center;transition:background .16s,color .16s}
+.login-methods a:hover{background:var(--line);color:var(--ink)}
+.login-methods a[aria-current="page"]{background:var(--surface);color:var(--blue-dark);font-weight:700}
+.login-card a:focus-visible,.login-card button:focus-visible,.login-card input:focus-visible,.login-shell>.brand:focus-visible{outline:2px solid var(--blue-dark);outline-offset:3px}
+.login-card label{font-size:12px}.login-card input{font-size:12px;caret-color:var(--blue-dark)}
+.login-card>.muted,.login-method-note,.login-card .field-note,.login-footnote,.login-page .page-caption{color:color-mix(in srgb,var(--muted) 72%,var(--ink))}
+.login-method-note{margin:0 0 18px;font-size:12px;line-height:1.6}
+.login-card .field-note{font-size:12px;line-height:1.5}
+.login-recipient{overflow-wrap:anywhere;font-weight:600}
+.login-card #code{font-size:26px;font-variant-numeric:tabular-nums;letter-spacing:.3em;height:44px}
+.login-card .button:hover{transform:none}.login-card .button:active{background:var(--blue-dark)}
+.login-restart{margin-top:18px;font-size:12px;line-height:1.6}.login-restart a{color:var(--blue-dark);text-decoration:underline;text-underline-offset:3px}.login-restart a:hover{color:var(--blue-dark);text-decoration-thickness:2px}.login-restart .field-note{margin:5px 0 0}
+.login-page ::selection{background:var(--line);color:var(--ink)}
+@media(max-width:420px){.login-shell{padding-top:6vh}.login-card{padding:22px}.login-methods a{font-size:12px;padding-inline:5px}}

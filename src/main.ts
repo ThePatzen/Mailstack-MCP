@@ -49,6 +49,8 @@ async function main(): Promise<void> {
     staticTokens: config.staticTokens,
     encryptionKey: config.encryptionKey,
     imap: config.imap,
+    smtp: config.smtp,
+    systemMail: config.systemMail,
     smtpConfigured: Boolean(config.smtp),
   }));
 

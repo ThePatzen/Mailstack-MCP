@@ -8,6 +8,8 @@ export interface WebDependencies {
   staticTokens: string[];
   encryptionKey: Buffer;
   imap: AppConfig['imap'];
+  smtp?: AppConfig['smtp'];
+  systemMail?: AppConfig['systemMail'];
   smtpConfigured: boolean;
 }
 
