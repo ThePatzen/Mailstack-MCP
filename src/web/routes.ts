@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 import { Router, urlencoded, type Request, type Response } from 'express';
-import rateLimit from 'express-rate-limit';
+import rateLimit, { ipKeyGenerator } from 'express-rate-limit';
 import { encryptSecret } from '../security/crypto.js';
 import { createOrUpdateAccount, createUserToken, deleteToken, findSession, getAccountCredentials, listTokens, revokeToken, setToolPermission } from '../storage/repository.js';
 import { verifyImapLogin, verifyStaticToken } from './auth.js';
@@ -34,7 +34,7 @@ function setNoStore(res: Response): void {
 
 function accountKey(req: Request): string {
   const username = safeText(req.body?.username, 1024).toLocaleLowerCase('en-US');
-  return createHash('sha256').update(username || `missing:${req.ip ?? 'unknown'}`).digest('hex');
+  return createHash('sha256').update(username || `missing:${ipKeyGenerator(req.ip ?? 'unknown')}`).digest('hex');
 }
 
 function renderLogin(res: Response, options: { error: string; username: string }): void {
@@ -83,7 +83,7 @@ export function createManagementRouter(deps: WebDependencies): Router {
   const ipLimiter = rateLimit({ windowMs: 15 * 60 * 1000, limit: 30, standardHeaders: true, legacyHeaders: false, message: 'Too many sign-in attempts. Please wait and try again.' });
   const accountLimiter = rateLimit({
     windowMs: 15 * 60 * 1000, limit: 8, standardHeaders: true, legacyHeaders: false,
-    keyGenerator: accountKey, validate: { keyGeneratorIpFallback: false },
+    keyGenerator: accountKey,
     message: 'Too many sign-in attempts for this account. Please wait and try again.',
   });
   const loggedIn = requireManagementSession;
