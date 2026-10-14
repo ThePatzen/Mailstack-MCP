@@ -165,6 +165,7 @@ export function createEmailLoginChallenge(input: {
   expiresAt: number;
   encryptionKey: Buffer;
 }): string {
+  if (typeof input.code !== 'string' || !/^[0-9]{6}$/.test(input.code)) throw new Error('Email login code must contain exactly six digits.');
   if (!input.username || input.username.length > 1024 || /[\r\n\0]/.test(input.username)) throw new Error('Invalid account username.');
   const now = Date.now();
   if (!Number.isSafeInteger(input.expiresAt) || input.expiresAt <= now) throw new Error('Email login challenge expiration must be in the future.');
@@ -193,6 +194,7 @@ export function consumeEmailLoginChallenge(input: {
   now: number;
   encryptionKey: Buffer;
 }): { username: string; encryptedPassword: EncryptedSecret } | null {
+  if (typeof input.code !== 'string' || !/^[0-9]{6}$/.test(input.code)) return null;
   if (!/^[A-Za-z0-9_-]{43}$/.test(input.challengeId) || !Number.isSafeInteger(input.now)) return null;
   const challengeDigest = hashEmailLoginValue(input.challengeId, 'email-login-challenge-id', input.encryptionKey);
   const codeDigest = hashEmailLoginValue(input.code, 'email-login-code', input.encryptionKey);
