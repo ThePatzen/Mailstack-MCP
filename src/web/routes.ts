@@ -3,6 +3,7 @@ import { Router, urlencoded, type Request, type Response } from 'express';
 import rateLimit, { ipKeyGenerator } from 'express-rate-limit';
 import { encryptSecret } from '../security/crypto.js';
 import { createOrUpdateAccount, createUserToken, deleteToken, findSession, getAccountCredentials, listTokens, revokeToken, setToolPermission } from '../storage/repository.js';
+import { createMailstackPluginArchive } from './plugin-package.js';
 import { verifyImapLogin, verifyStaticToken } from './auth.js';
 import type { WebDependencies } from './app.js';
 import { createLoginCsrfToken, csrfToken, LOGIN_CSRF_COOKIE, requireCsrf, verifyLoginCsrfToken } from './csrf.js';
@@ -56,7 +57,20 @@ function issueCookie(res: Response, sessionId: string): void {
   res.cookie(SESSION_COOKIE, sessionId, { ...COOKIE_OPTIONS, maxAge: SESSION_TTL_MS });
 }
 
-function renderTokens(req: Request, res: Response, deps: WebDependencies, options: { notice?: string; oneTimeToken?: string; labelValue?: string; status?: number } = {}): void {
+function publicMcpUrl(req: Request): string | undefined {
+  const forwardedHost = req.get('x-forwarded-host')?.split(',')[0]?.trim();
+  const host = forwardedHost || req.get('host');
+  if (!host || req.protocol !== 'https' || /[\s/@\\?#]/.test(host)) return undefined;
+  try {
+    const base = new URL(`${req.protocol}://${host}`);
+    if (base.username || base.password || base.pathname !== '/' || base.search || base.hash) return undefined;
+    return new URL('/mcp', base).toString();
+  } catch {
+    return undefined;
+  }
+}
+
+function renderTokens(req: Request, res: Response, deps: WebDependencies, options: { notice?: string; oneTimeToken?: string; labelValue?: string; status?: number; openPermissionsTokenId?: string } = {}): void {
   const accountId = (req as ManagementRequest).management?.accountId;
   if (!accountId) {
     res.redirect('/manage');
@@ -74,6 +88,8 @@ function renderTokens(req: Request, res: Response, deps: WebDependencies, option
     notice: options.notice ?? '',
     oneTimeToken: options.oneTimeToken ?? '',
     labelValue: options.labelValue ?? '',
+    mcpUrl: publicMcpUrl(req) ?? '',
+    openPermissionsTokenId: options.openPermissionsTokenId ?? '',
   });
 }
 
@@ -137,7 +153,23 @@ export function createManagementRouter(deps: WebDependencies): Router {
     }
     managementReq.accountUsername = account.username;
     const queryNotice = req.query.notice === 'revoked' ? 'Token widerrufen.' : req.query.notice === 'deleted' ? 'Token dauerhaft gelöscht.' : req.query.notice === 'unchanged' ? 'Token war bereits widerrufen oder wurde nicht gefunden.' : '';
-    renderTokens(req, res, deps, { notice: queryNotice });
+    renderTokens(req, res, deps, {
+      notice: queryNotice,
+      openPermissionsTokenId: safeText(req.query.openPermissions, 64),
+    });
+  });
+
+  router.get('/manage/plugin.zip', loggedIn, (req, res) => {
+    const mcpUrl = publicMcpUrl(req);
+    if (!mcpUrl) {
+      res.status(400).send('Das Plugin kann nur über die öffentliche HTTPS-Adresse heruntergeladen werden.');
+      return;
+    }
+    const archive = createMailstackPluginArchive(mcpUrl);
+    setNoStore(res);
+    res.setHeader('Content-Type', 'application/zip');
+    res.setHeader('Content-Disposition', 'attachment; filename="mailstack-mcp-plugin.zip"');
+    res.send(archive);
   });
 
   router.post('/manage/tokens', loggedIn, csrf, (req, res) => {
@@ -182,7 +214,7 @@ export function createManagementRouter(deps: WebDependencies): Router {
     }
     try {
       setToolPermission(management.accountId, tokenId, tool, allowed);
-      res.redirect(303, '/manage/tokens');
+      res.redirect(303, `/manage/tokens?openPermissions=${encodeURIComponent(tokenId)}`);
     } catch {
       res.status(404).send('Token nicht gefunden.');
     }

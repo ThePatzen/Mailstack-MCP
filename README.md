@@ -152,7 +152,21 @@ Der Dienst prüft das Postfach beim IMAP-Server und speichert nach erfolgreicher
 
 Nach der Anmeldung erstellen Sie unter **Zugriffstoken** ein benanntes User-Token. Der vollständige Wert wird nur einmal angezeigt. Kopieren Sie ihn sofort in die MCP-Client-Konfiguration und speichern Sie ihn wie ein Passwort. Verlorene Werte können nicht erneut angezeigt werden; erstellen Sie in diesem Fall ein neues Token und widerrufen Sie das alte. Für jedes Token können Sie einzelne Funktionen erlauben oder sperren. Ein Widerruf macht das Token unbrauchbar. Widerrufene Einträge lassen sich anschließend dauerhaft löschen.
 
-Der MCP-Client verbindet sich per Streamable HTTP mit `https://mail-mcp.example.net/mcp` und sendet das User-Token als `Authorization: Bearer <USER_TOKEN>`. Tragen Sie URL und User-Token in die HTTP-MCP-Konfiguration Ihres Clients ein. Die genaue Konfigurationsform hängt vom Client ab. Das statische Verwaltungstoken gehört nicht in den MCP-Client.
+Der MCP-Server stellt einen Streamable-HTTP-Endpunkt unter `https://mail-mcp.example.net/mcp` bereit. Der MCP-Client muss diesen Endpunkt mit dem erstellten User-Token als Bearer-Token aufrufen (`Authorization: Bearer <USER_TOKEN>`). Das statische Verwaltungstoken aus `MCP_STATIC_TOKENS` dient nur zur Anmeldung in der Verwaltungsoberfläche und gehört nicht in die MCP-Client-Konfiguration.
+
+### Codex konfigurieren
+
+Fügen Sie in `~/.codex/config.toml` folgenden Eintrag ein und ersetzen Sie die Beispiel-URL durch Ihre öffentliche HTTPS-Adresse:
+
+```toml
+[mcp_servers.mailstack]
+url = "https://mail-mcp.example.net/mcp"
+bearer_token_env_var = "MAILSTACK_MCP_TOKEN"
+```
+
+Setzen Sie `MAILSTACK_MCP_TOKEN` in der Umgebung, in der Codex gestartet wird, auf das zuvor erzeugte User-Token. Speichern Sie das Token nicht direkt in der TOML-Datei. Starten Sie Codex neu, damit die Konfiguration geladen wird. Weitere Informationen stehen in der [Codex MCP-Dokumentation](https://learn.chatgpt.com/docs/extend/mcp?surface=cli) und der [Codex-Konfigurationsreferenz](https://learn.chatgpt.com/docs/config-file/config-reference).
+
+Alternativ bietet die Token-Verwaltung nach der Anmeldung einen Download für ein installierbares Plugin der ChatGPT-Desktop-App und Codex. Das Paket enthält die beim Download verwendete HTTPS-Adresse, aber keine Zugangsdaten. Geben Sie beim Verbinden das User-Token ein und installieren Sie das Paket anhand der enthaltenen `INSTALL.md`-Anleitung über einen persönlichen Marketplace.
 
 ## Verfügbare MCP-Funktionen
 
