@@ -24,9 +24,13 @@ export function createManagementApp(dependencies: WebDependencies): Express {
   const moduleDir = __dirname;
   app.set('views', join(moduleDir, 'views'));
   app.use(helmet());
-  app.use('/manage/assets', express.static(join(moduleDir, 'public'), { fallthrough: false, maxAge: '1h' }));
+  app.use('/manage', (req, res) => {
+    const suffix = req.originalUrl.slice('/manage'.length);
+    res.redirect(308, `/${suffix.replace(/^\/+/, '')}`);
+  });
+  app.use('/assets', express.static(join(moduleDir, 'public'), { fallthrough: false, maxAge: '1h' }));
   if (dependencies.appLogoPath) {
-    app.get('/manage/brand/logo', (_req, res, next) => {
+    app.get('/brand/logo', (_req, res, next) => {
       res.setHeader('X-Content-Type-Options', 'nosniff');
       res.type(extname(dependencies.appLogoPath!).slice(1));
       res.sendFile(dependencies.appLogoPath!, (error) => { if (error) next(error); });

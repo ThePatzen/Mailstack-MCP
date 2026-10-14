@@ -5,12 +5,12 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="color-scheme" content="light">
   <title>Anmelden · <%= appTitle %></title>
-  <link rel="stylesheet" href="/manage/assets/app.css">
-  <link rel="stylesheet" href="/manage/assets/typography.css">
+  <link rel="stylesheet" href="/assets/app.css">
+  <link rel="stylesheet" href="/assets/typography.css">
 </head>
 <body class="login-page">
   <main class="login-shell">
-    <a class="brand" href="/manage" aria-label="<%= appTitle %> Startseite">
+    <a class="brand" href="/" aria-label="<%= appTitle %> Startseite">
       <% if (appLogoUrl) { %><img class="brand-image" src="<%= appLogoUrl %>" alt=""><% } else { %><span class="brand-mark" aria-hidden="true">M</span><% } %>
       <span><%= appTitle %></span>
     </a>
@@ -19,8 +19,8 @@
       <p class="muted"><% if (challengeId) { %>Geben Sie den Code ein, den wir an <strong class="login-recipient"><%= username %></strong> gesendet haben.<% } else { %>Melden Sie sich mit Ihrem Mailserver-Konto an, um persönliche MCP-Zugriffstoken zu verwalten.<% } %></p>
       <% if (emailAvailable) { %>
         <nav class="login-methods" aria-label="Anmeldemethode">
-          <a href="/manage?method=email"<% if (method === 'email') { %> aria-current="page"<% } %>>E-Mail-Code</a>
-          <a href="/manage?method=token"<% if (method === 'token') { %> aria-current="page"<% } %>>Verwaltungstoken</a>
+          <a href="/?method=email"<% if (method === 'email') { %> aria-current="page"<% } %>>E-Mail-Code</a>
+          <a href="/?method=token"<% if (method === 'token') { %> aria-current="page"<% } %>>Verwaltungstoken</a>
         </nav>
       <% } else { %>
         <p class="login-method-note">E-Mail-Codes sind derzeit nicht verfügbar. Melden Sie sich mit dem Verwaltungstoken Ihres Betreibers an.</p>
@@ -28,7 +28,7 @@
       <% if (error) { %><div class="alert alert-error" role="alert"><%= error %></div><% } %>
       <% if (challengeId) { %>
         <% if (!error) { %><p class="alert alert-info" role="status">Code versendet. Er ist ab Anforderung zehn Minuten gültig.</p><% } %>
-        <form method="post" action="/manage/login/verify-code" autocomplete="on">
+        <form method="post" action="/login/verify-code" autocomplete="on">
           <input type="hidden" name="_csrf" value="<%= csrf %>">
           <input type="hidden" name="challengeId" value="<%= challengeId %>">
           <input type="hidden" name="username" value="<%= accountUsername %>">
@@ -38,11 +38,11 @@
           <button class="button button-primary button-wide" type="submit">Anmelden</button>
         </form>
         <div class="login-restart">
-          <a href="/manage?method=email">Anmeldung neu starten und neuen Code anfordern</a>
+          <a href="/?method=email">Anmeldung neu starten und neuen Code anfordern</a>
           <p class="field-note">Geben Sie dafür Ihre Postfachdaten erneut ein.</p>
         </div>
       <% } else if (method === 'email') { %>
-        <form method="post" action="/manage/login/code" autocomplete="on">
+        <form method="post" action="/login/code" autocomplete="on">
           <input type="hidden" name="_csrf" value="<%= csrf %>">
           <label for="username">E-Mail-Adresse Ihres Postfachs</label>
           <input id="username" name="username" type="email" value="<%= username %>" maxlength="320" autocomplete="username" autocapitalize="none" spellcheck="false" aria-describedby="email-note" required>
@@ -52,7 +52,7 @@
           <button class="button button-primary button-wide" type="submit">Code per E-Mail anfordern</button>
         </form>
       <% } else { %>
-        <form method="post" action="/manage/login" autocomplete="on">
+        <form method="post" action="/login" autocomplete="on">
           <input type="hidden" name="_csrf" value="<%= csrf %>">
           <label for="staticToken">Verwaltungstoken</label>
           <input id="staticToken" name="staticToken" type="password" autocomplete="current-password" aria-describedby="token-note" required>

@@ -2,7 +2,7 @@
 
 Mailstack MCP stellt eine Webverwaltung und einen MCP-Endpunkt für ein Dovecot-IMAP-Postfach bereit. Der Dienst läuft als einzelner Docker-Compose-Container. Nginx übernimmt den öffentlichen HTTPS-Zugang.
 
-Die Verwaltung liegt unter `/manage`, der MCP-Endpunkt unter `/mcp`. Der optionale MCP-Mailversand wird aktiviert, wenn `SMTP_HOST` gesetzt ist. Sind `SMTP_HOST` und alle drei `SMTP_SYSTEM_*`-Werte konfiguriert, ist E-Mail-Code die vorausgewählte Anmeldemethode; die Anmeldung mit Verwaltungstoken bleibt auswählbar.
+Die Verwaltungsoberfläche liegt unter `/`, der MCP-Endpunkt unter `/mcp`. Aufrufe des früheren Pfads `/manage` werden auf `/` umgeleitet. Der optionale MCP-Mailversand wird aktiviert, wenn `SMTP_HOST` gesetzt ist. Sind `SMTP_HOST` und alle drei `SMTP_SYSTEM_*`-Werte konfiguriert, ist E-Mail-Code die vorausgewählte Anmeldemethode; die Anmeldung mit Verwaltungstoken bleibt auswählbar.
 
 ## Voraussetzungen
 
@@ -56,7 +56,7 @@ Der Container legt SQLite-Dateien nicht selbst an, wenn der Datenpfad fehlt oder
 
 ## Nginx als HTTPS-Reverse-Proxy
 
-Leiten Sie `/mcp`, `/manage` und dessen statische Dateien an den Loopback-Port weiter. Die übermittelten Host- und Protokollinformationen werden für sichere Verwaltungssitzungen benötigt. Für den Streamable-HTTP-MCP-Verkehr sind deaktiviertes Buffering und großzügige Timeouts wichtig.
+Leiten Sie `/mcp` und alle übrigen Pfade, einschließlich `/` und der Verwaltungsassets, an den Loopback-Port weiter. Die übermittelten Host- und Protokollinformationen werden für sichere Verwaltungssitzungen benötigt. Für den Streamable-HTTP-MCP-Verkehr sind deaktiviertes Buffering und großzügige Timeouts wichtig.
 
 ```nginx
 server {
@@ -80,17 +80,7 @@ server {
         proxy_send_timeout 3600s;
     }
 
-    location = /manage {
-        proxy_pass http://127.0.0.1:3000/manage;
-        proxy_http_version 1.1;
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Host $host;
-        proxy_set_header X-Forwarded-Proto $scheme;
-    }
-
-    location ^~ /manage/ {
+    location / {
         proxy_pass http://127.0.0.1:3000;
         proxy_http_version 1.1;
         proxy_set_header Host $host;
@@ -151,7 +141,7 @@ Der Beispielbefehl setzt `DATA_DIR=./data` voraus. Wenn Sie in `.env` einen ande
 
 ## Anmeldung und User-Token
 
-Öffnen Sie `https://mail-mcp.example.net/manage`. Wenn SMTP und alle `SMTP_SYSTEM_*`-Werte vollständig gesetzt sind, ist **E-Mail-Code** vorausgewählt. Sie können stattdessen **Verwaltungstoken** auswählen. Ohne vollständige System-Mail-Konfiguration steht nur der Verwaltungstoken-Weg zur Verfügung.
+Öffnen Sie `https://mail-mcp.example.net/`. Vorhandene Links auf `/manage` werden auf `/` umgeleitet. Durch die Änderung des Cookie-Pfads müssen Sie sich nach dem Update einmal neu anmelden. Wenn SMTP und alle `SMTP_SYSTEM_*`-Werte vollständig gesetzt sind, ist **E-Mail-Code** vorausgewählt. Sie können stattdessen **Verwaltungstoken** auswählen. Ohne vollständige System-Mail-Konfiguration steht nur der Verwaltungstoken-Weg zur Verfügung.
 
 Bei E-Mail-Code geben Sie den IMAP-Benutzernamen und das IMAP-Passwort ein. Der Dienst prüft zuerst die Zugangsdaten beim IMAP-Server und sendet dann einen einmalig verwendbaren sechsstelligen Code an die E-Mail-Adresse dieses Benutzernamens. Der Code ist zehn Minuten gültig; nach fünf falschen Eingaben muss die Anmeldung neu begonnen werden. Für einen neuen Code starten Sie den Vorgang erneut und geben die IMAP-Zugangsdaten noch einmal ein; dadurch wird der vorherige Code ungültig. Diese Anmeldemethode setzt voraus, dass der IMAP-Benutzername selbst eine erreichbare E-Mail-Adresse ist. Verwenden Sie bei kurzen IMAP-Benutzernamen ohne zustellbare Adresse die Anmeldung mit Verwaltungstoken.
 

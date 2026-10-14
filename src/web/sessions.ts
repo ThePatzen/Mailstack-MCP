@@ -16,13 +16,13 @@ export function createManagementSession(accountId: string): string {
 export function requireManagementSession(req: Request, res: Response, next: NextFunction): void {
   const sessionId = readCookie(req, SESSION_COOKIE);
   if (typeof sessionId !== 'string') {
-    res.redirect('/manage');
+    res.redirect('/');
     return;
   }
   const session = findSession(sessionId);
   if (!session) {
-    res.clearCookie(SESSION_COOKIE, { path: '/manage', httpOnly: true, secure: true, sameSite: 'lax' });
-    res.redirect('/manage');
+    res.clearCookie(SESSION_COOKIE, { path: '/', httpOnly: true, secure: true, sameSite: 'lax' });
+    res.redirect('/');
     return;
   }
   (req as ManagementRequest).management = { accountId: session.accountId, sessionId };

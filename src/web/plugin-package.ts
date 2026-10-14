@@ -84,7 +84,7 @@ export function createMailstackPluginArchive(mcpUrl: string, pluginName: string)
     version: '0.1.0',
     description: `Greift mit den freigegebenen Funktionen sicher auf ein Mailpostfach zu.`,
     author: { name: pluginName },
-    homepage: `${origin}/manage`,
+    homepage: `${origin}`,
     keywords: ['email', 'imap', 'mail'],
     extensions: {
       'com.openai': {
@@ -95,7 +95,7 @@ export function createMailstackPluginArchive(mcpUrl: string, pluginName: string)
           developerName: pluginName,
           category: 'Productivity',
           capabilities: ['Read', 'Write'],
-          websiteURL: `${origin}/manage`,
+          websiteURL: `${origin}`,
           defaultPrompt: 'Hilf mir, mein Mailpostfach sicher zu verwalten.',
         },
         onboardingSkill: './skills/setup/SKILL.md',
@@ -129,7 +129,7 @@ Bei der Verbindung fragt Codex oder die ChatGPT-Desktop-App nach einem API-Key. 
 
 Geben Sie das Token niemals in den Chat ein und speichern Sie es nicht in Plugin-Dateien. Wenn Sie den Wert verloren haben, erstellen Sie in der Verwaltung ein neues Token und widerrufen Sie das alte.
 
-Das statische Verwaltungstoken wird ausschließlich für die Anmeldung auf \`${origin}/manage\` benötigt. Es funktioniert nicht als MCP-Zugang.
+Das statische Verwaltungstoken wird ausschließlich für die Anmeldung auf \`${origin}\` benötigt. Es funktioniert nicht als MCP-Zugang.
 `;
   const installGuide = `# ${pluginName} Plugin installieren
 
@@ -155,7 +155,7 @@ Dieses Paket enthält die Verbindung zu \`${mcpUrl}\`. Es enthält keine Zugangs
 \`\`\`
 
 3. Starten Sie die ChatGPT-Desktop-App neu und installieren Sie ${pluginName} unter **Plugins** aus der Quelle \`mailstack-local\`. In Codex CLI können Sie den Plugin-Browser mit \`/plugins\` öffnen.
-4. Geben Sie beim Verbinden ein persönliches User-Token ein. Erstellen oder widerrufen Sie Tokens unter \`${origin}/manage\`.
+4. Geben Sie beim Verbinden ein persönliches User-Token ein. Erstellen oder widerrufen Sie Tokens unter \`${origin}\`.
 
 Der Plugin-Ordner ist lokal installiert. Damit andere Nutzer das Plugin beziehen können, muss es über eine gemeinsame Marketplace-Quelle verteilt werden.
 `;
