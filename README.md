@@ -45,7 +45,7 @@ sudo chown 1000:1000 ./data
 chmod 700 ./data
 ```
 
-Schützen Sie den Ordner und seine Backups vor Zugriff durch andere Benutzer. Starten Sie anschließend:
+Schützen Sie den Ordner und seine Backups vor Zugriff durch andere Benutzer. Für einen lokalen Start aus dem Quellcode-Checkout bauen und starten Sie anschließend:
 
 ```sh
 docker compose up -d --build
@@ -231,10 +231,41 @@ npm version major   # inkompatible Änderung, z. B. 0.1.0 → 1.0.0
 git push origin main --follow-tags
 ```
 
-Der Workflow baut und veröffentlicht anschließend `thepatzen/mailstack-mcp:0.1.1` und `thepatzen/mailstack-mcp:latest`. Für einen produktiven Compose-Einsatz ersetzen Sie in `compose.yaml` `build: .` durch das passende, versionierte Image, zum Beispiel:
+Der Workflow baut und veröffentlicht anschließend `thepatzen/mailstack-mcp:0.1.1` und `thepatzen/mailstack-mcp:latest` im öffentlichen [Docker-Hub-Repository](https://hub.docker.com/repository/docker/thepatzen/mailstack-mcp). Für die Installation und Updates über Docker Hub ersetzen Sie in `compose.yaml` `build: .` durch das gewünschte Image. Der Service-Eintrag sieht dann zum Beispiel so aus:
 
 ```yaml
-image: thepatzen/mailstack-mcp:0.1.1
+services:
+  mailstack-mcp:
+    image: thepatzen/mailstack-mcp:0.1.1
 ```
 
-Die Image-Tags sind öffentliche Artefakte; `.env` und das persistente Datenverzeichnis bleiben separat auf Ihrem Server.
+Verwenden Sie für reproduzierbare Deployments einen festen Versionstag. Der Tag `latest` wird bei jedem erfolgreichen Release auf das neue Image gesetzt; ein laufender Container wechselt erst nach einem Pull und Neustart. Ein Docker-Hub-Login ist für das öffentliche Image nicht erforderlich. `.env` und das persistente Datenverzeichnis bleiben separat auf Ihrem Server.
+
+### Erstinstallation
+
+Richten Sie `.env` und das Datenverzeichnis wie oben beschrieben ein. Nachdem `compose.yaml` auf das Docker-Hub-Image umgestellt ist, laden Sie das Image und starten den Dienst:
+
+```sh
+docker compose pull mailstack-mcp
+docker compose up -d mailstack-mcp
+docker compose logs -f mailstack-mcp
+```
+
+### Update auf eine neue Version
+
+Ändern Sie zuerst in `compose.yaml` den Image-Tag auf die neue Version, zum Beispiel `thepatzen/mailstack-mcp:0.1.2`. Bei Verwendung von `latest` ist diese Änderung nicht nötig. Laden Sie das neue Image, solange die bisherige Version noch läuft. Bei der Standardkonfiguration liegt das Datenverzeichnis unter `./data`; stoppen Sie den Dienst anschließend kurz, um eine konsistente Dateikopie zu sichern:
+
+```sh
+docker compose pull mailstack-mcp
+docker compose stop mailstack-mcp
+tar -czf "mailstack-data-backup-$(date +%F-%H%M%S).tar.gz" ./data
+```
+
+Starten Sie den Dienst danach mit dem neuen Image:
+
+```sh
+docker compose up -d mailstack-mcp
+docker compose logs --tail=100 mailstack-mcp
+```
+
+Bei einem abweichenden `DATA_DIR` sichern Sie statt `./data` den dort eingestellten Host-Pfad. Das Datenverzeichnis nicht löschen: Es enthält die SQLite-Datenbank mit Konten und Tokens und bleibt beim Austausch des Containers erhalten.
