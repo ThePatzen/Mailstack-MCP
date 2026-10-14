@@ -34,6 +34,8 @@ npm version patch
 
 This should update the package version and lockfile, create a version commit, and create the matching `vX.Y.Z` tag. Read the version printed by npm and verify the files and tag match it. If npm did not create the tag, create it with `git tag vX.Y.Z`. Never replace, delete, or move an existing tag.
 
+Verify all three version fields after `npm version patch`: `package.json.version`, `package-lock.json.version`, and `package-lock.json.packages[""].version`. If npm leaves either lockfile field unchanged, update both to the new version before pushing, include the correction in the version commit, and make sure the release tag points to the corrected commit. A tag created during this release may be recreated locally only after confirming that the same tag does not exist on the remote. Never replace, delete, or move a tag that already exists on the remote.
+
 ## Verify and push
 
 Before pushing, inspect the changelog commit, version commit, and tag target. Confirm the working tree is clean and the tag points to the version commit on `main`.
