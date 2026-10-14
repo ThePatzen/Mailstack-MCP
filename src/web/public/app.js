@@ -1,3 +1,4 @@
+// Copy the one-time token only after an explicit user action.
 document.addEventListener('click', async (event) => {
   const button = event.target.closest('[data-copy-token]');
   if (!button) return;
@@ -12,6 +13,7 @@ document.addEventListener('click', async (event) => {
   }
 });
 
+// Confirm irreversible token actions before allowing their forms to submit.
 document.addEventListener('submit', (event) => {
   if (event.target.matches('[data-confirm-revoke]') && !window.confirm('Dieses Token widerrufen? Verbundene Apps verlieren sofort den Zugriff.')) event.preventDefault();
   if (event.target.matches('[data-confirm-delete]') && !window.confirm('Dieses widerrufene Token und seine Berechtigungen dauerhaft löschen?')) event.preventDefault();

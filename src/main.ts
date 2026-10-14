@@ -12,6 +12,7 @@ import { configureSmtpService } from './smtp/sender.js';
 import { authenticateMcpRequest, principalFromAuthInfo } from './http/mcp-auth.js';
 import { buildMcpServer } from './mcp/server.js';
 
+/** Confirms the configured data path is an existing writable directory. */
 async function verifyDataDirectory(dataDir: string): Promise<void> {
   try {
     const details = await stat(dataDir);
@@ -22,6 +23,7 @@ async function verifyDataDirectory(dataDir: string): Promise<void> {
   }
 }
 
+/** Loads configuration, initializes services, and starts the HTTP server. */
 async function main(): Promise<void> {
   const config = loadConfig(process.env);
   configureImapService(config);
@@ -43,15 +45,18 @@ async function main(): Promise<void> {
   const app = express();
   app.disable('x-powered-by');
   app.use(helmet());
+  // Keep health checks independent of mailbox credentials and database state.
   app.get('/health', (_req, res) => res.status(200).json({ status: 'ok' }));
   // The auth middleware populates the verified principal before the SDK asks
   // for a server, so registrations are scoped to this request's token.
+  // Build each MCP server from the principal authenticated for that request.
   const mcpHandler = createMcpHandler(({ authInfo }) => {
     const principal = principalFromAuthInfo(authInfo);
     if (!principal) throw new Error('MCP authentication context is unavailable.');
     return buildMcpServer(principal, Boolean(config.smtp));
   });
   const handleMcp = toNodeHandler(mcpHandler);
+  // Convert rejected SDK requests into a safe response without leaking error details.
   app.all('/mcp', authenticateMcpRequest, (req, res) => {
     void handleMcp(req, res).catch(() => {
       if (!res.headersSent) res.status(500).json({ error: 'internal_error', message: 'MCP request could not be processed.' });
@@ -70,19 +75,23 @@ async function main(): Promise<void> {
     smtpConfigured: Boolean(config.smtp),
   }));
 
+  // Report readiness only after the HTTP listener has started successfully.
   const server = app.listen(config.httpPort, '0.0.0.0', () => {
     process.stdout.write(`Mailstack MCP listening on port ${config.httpPort}\n`);
   });
 
   let shuttingDown = false;
+  /** Closes MCP, HTTP, and SQLite once after the first termination signal. */
   const shutdown = (signal: string): void => {
     if (shuttingDown) return;
     shuttingDown = true;
     process.stdout.write(`Received ${signal}; shutting down.\n`);
+    // Keep shutdown moving even if the MCP SDK reports a cleanup error.
     const closeMcp = mcpHandler.close().catch(() => {
       process.stderr.write('MCP handler did not close cleanly.\n');
       process.exitCode = 1;
     });
+    // Close storage after HTTP requests stop, so in-flight handlers can finish.
     server.close(async (error) => {
       await closeMcp;
       await closeDatabase();
@@ -92,15 +101,18 @@ async function main(): Promise<void> {
       }
     });
   };
+  // Handle each termination signal once to avoid duplicate cleanup.
   process.once('SIGINT', () => shutdown('SIGINT'));
   process.once('SIGTERM', () => shutdown('SIGTERM'));
 }
 
 let closeDatabase: () => Promise<void> = async () => {};
+/** Supplies the storage cleanup action used during graceful shutdown. */
 export function registerDatabaseCloser(closer: () => Promise<void>): void {
   closeDatabase = closer;
 }
 
+// Keep startup errors useful for operators without printing secret values.
 main().catch((error: unknown) => {
   const message = error instanceof Error ? error.message : 'Unknown startup error.';
   process.stderr.write(`Startup failed: ${message}\n`);

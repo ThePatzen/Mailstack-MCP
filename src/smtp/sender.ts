@@ -40,17 +40,21 @@ const MailComposer = require('nodemailer/lib/mail-composer') as MailComposerCons
 
 let serviceConfig: AppConfig | undefined;
 
+/** Stores the SMTP settings used by later message sends. */
 export function configureSmtpService(config: AppConfig): void {
   serviceConfig = config;
 }
 
+/** Throws the shared safe validation error for invalid outbound message input. */
 function invalidInput(): never { throw new ImapServiceError('INVALID_INPUT'); }
 
+/** Accepts only a single plain email address, excluding header and list syntax. */
 function validateAddress(address: string): void {
   if (typeof address !== 'string' || address.length > 320 || /[\s<>(),;\r\n\0]/.test(address) ||
       !/^[^@]+@[^@.]+(?:\.[^@.]+)+$/.test(address)) invalidInput();
 }
 
+/** Validates recipient, body, and attachment limits before any network operation. */
 function validateMessage(input: SendEmailInput): void {
   if (!input || typeof input !== 'object' || !Array.isArray(input.to) || input.to.length < 1 ||
       !Array.isArray(input.cc ?? []) || !Array.isArray(input.bcc ?? [])) invalidInput();
@@ -79,6 +83,7 @@ function validateMessage(input: SendEmailInput): void {
   }
 }
 
+/** Normalizes an optional mailbox name and rejects unsafe command characters. */
 function mailboxName(value: string | undefined): string | null {
   if (value === undefined || value.trim() === '') return null;
   const name = value.trim();
@@ -86,6 +91,7 @@ function mailboxName(value: string | undefined): string | null {
   return name;
 }
 
+/** Selects the configured Sent folder or the mailbox advertised with the Sent role. */
 function resolveFromList(mailboxes: Array<{ path: string; specialUse?: string | null }>, override?: string): string {
   const configured = mailboxName(override);
   if (configured) {
@@ -98,12 +104,14 @@ function resolveFromList(mailboxes: Array<{ path: string; specialUse?: string | 
   throw new ImapServiceError('NOT_FOUND', 'No Sent mailbox is available for this account.');
 }
 
+/** Resolves a Sent mailbox using the account's current IMAP connection. */
 export async function resolveSentMailbox(accountId: string, override?: string): Promise<string> {
   if (!accountId) invalidInput();
   const configuredOverride = override ?? serviceConfig?.sentFolder;
   return withImapClient(accountId, async (client) => resolveFromList(await client.list(), configuredOverride));
 }
 
+/** Converts SMTP failures into safe service errors without exposing server details. */
 function safeSmtpError(error: unknown): ImapServiceError {
   const details = error && typeof error === 'object' ? error as Record<string, unknown> : {};
   const code = String(details.code ?? '').toLowerCase();
@@ -113,12 +121,14 @@ function safeSmtpError(error: unknown): ImapServiceError {
   return new ImapServiceError('CONNECTION', 'The SMTP server could not confirm acceptance. Check delivery before retrying.');
 }
 
+/** Creates a unique Message-ID using only a validated domain from the username. */
 function createMessageId(username: string): string {
   const domain = username.split('@').at(-1);
   const safeDomain = domain && /^[A-Za-z0-9.-]{1,253}$/.test(domain) ? domain : 'localhost';
   return `<${randomUUID()}@${safeDomain}>`;
 }
 
+/** Sends one validated message and archives the exact accepted bytes in Sent. */
 export async function sendAndArchive(accountId: string, input: SendEmailInput): Promise<SendEmailResult> {
   if (!serviceConfig?.smtp) throw new ImapServiceError('UNSUPPORTED', 'Email sending is not enabled on this server.');
   if (typeof accountId !== 'string' || !accountId) invalidInput();

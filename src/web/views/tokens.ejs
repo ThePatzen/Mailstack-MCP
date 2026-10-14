@@ -29,6 +29,7 @@
         <a href="#create-token" class="button button-primary">Token erstellen</a>
       </section>
       <% if (notice) { %><div class="alert alert-info" role="status"><%= notice %></div><% } %>
+      <%# The full token is rendered only in the creation response; later pages receive summaries only. %>
       <% if (oneTimeToken) { %>
         <section class="one-time-card" aria-labelledby="new-token-title">
           <div class="one-time-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="m5 12 4 4L19 6"/></svg></div>
@@ -59,6 +60,7 @@
           <div class="empty-state"><h3>Noch keine Token</h3><p>Erstellen Sie ein Token, um einer MCP-App kontrollierten Zugriff auf Ihr Postfach zu geben.</p></div>
         <% } else { %>
           <div class="token-list">
+            <%# Each card receives only the current account's token summary and permission state. %>
             <% tokens.forEach((token) => { %>
               <article class="token-card <%= token.revokedAt ? 'token-revoked' : '' %>">
                 <div class="token-row">

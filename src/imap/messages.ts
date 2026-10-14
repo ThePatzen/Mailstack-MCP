@@ -11,19 +11,24 @@ export interface MessageSummary { uid: number; subject: string | null; from: str
 const UID_SEARCH_CHUNK = 500;
 const MAX_UID_SEARCH_WINDOWS = 200;
 
+/** Rejects mailbox names that cannot be safely passed to an IMAP command. */
 function validMailbox(mailbox: string): void {
   if (typeof mailbox !== 'string' || !mailbox.trim() || mailbox.length > 1024 || /[\r\n\0]/.test(mailbox)) throw new ImapServiceError('INVALID_INPUT');
 }
+/** Ensures message identifiers are valid positive IMAP UIDs. */
 function validUid(uid: number): void { if (!Number.isSafeInteger(uid) || uid < 1) throw new ImapServiceError('INVALID_INPUT'); }
+/** Checks paging bounds so callers cannot trigger unbounded mailbox reads. */
 function validPage(page: MessagePage): void {
   if (!page || !Number.isInteger(page.limit) || page.limit < 1 || page.limit > 50 ||
       (page.beforeUid !== undefined && (!Number.isSafeInteger(page.beforeUid) || page.beforeUid < 1))) throw new ImapServiceError('INVALID_INPUT');
 }
+/** Parses an optional date search value and rejects invalid or oversized input. */
 function dateValue(value: string | undefined): Date | undefined {
   if (value === undefined) return undefined;
   if (typeof value !== 'string' || value.length > 40 || !Number.isFinite(Date.parse(value))) throw new ImapServiceError('INVALID_INPUT');
   return new Date(value);
 }
+/** Converts caller search filters into the IMAP SEARCH query shape. */
 function searchQuery(criteria: SearchCriteria): Record<string, unknown> {
   if (!criteria || typeof criteria !== 'object') throw new ImapServiceError('INVALID_INPUT');
   const query: Record<string, unknown> = {};
@@ -48,17 +53,21 @@ function searchQuery(criteria: SearchCriteria): Record<string, unknown> {
   if (!Object.keys(query).length) query.all = true;
   return query;
 }
+/** Holds the mailbox lock until the operation completes, then releases it on errors too. */
 async function locked<T>(client: ImapFlow, mailbox: string, action: () => Promise<T>): Promise<T> {
   const lock = await client.getMailboxLock(mailbox);
   try { return await action(); } finally { lock.release(); }
 }
+/** Converts fetched envelope data into bounded fields suitable for MCP output. */
 function summary(message: { uid: number; envelope?: { subject?: string | null; from?: Array<{ name?: string; address?: string }>; to?: Array<{ name?: string; address?: string }>; date?: Date | null }; flags?: Set<string>; size?: number }): MessageSummary {
+  /** Formats at most 25 addresses and caps each rendered value. */
   const formatAddresses = (items?: Array<{ name?: string; address?: string }>): string[] => (items ?? []).slice(0, 25).map((item) => (item.name ? `${item.name} <${item.address ?? ''}>` : item.address ?? '').slice(0, 512));
   return { uid: message.uid, subject: message.envelope?.subject?.slice(0, 2000) ?? null,
     from: formatAddresses(message.envelope?.from), to: formatAddresses(message.envelope?.to),
     date: message.envelope?.date instanceof Date ? message.envelope.date.toISOString() : null,
     flags: [...(message.flags ?? [])].slice(0, 50).map((flag) => flag.slice(0, 100)), size: message.size ?? null };
 }
+/** Searches fixed UID ranges from newest to oldest until one page is filled. */
 async function pageMessages(client: ImapFlow, mailbox: string, query: Record<string, unknown>, page: MessagePage): Promise<MessageSummary[]> {
   return locked(client, mailbox, async () => {
     // Walk newest-to-oldest in fixed UID windows. The server returns at most
@@ -86,14 +95,17 @@ async function pageMessages(client: ImapFlow, mailbox: string, query: Record<str
   });
 }
 
+/** Lists one newest-first page of message summaries from a mailbox. */
 export async function listMessages(accountId: string, mailbox: string, page: MessagePage): Promise<MessageSummary[]> {
   validMailbox(mailbox); validPage(page);
   return safely(() => withImapClient(accountId, (client) => pageMessages(client, mailbox, { all: true }, page)));
 }
+/** Searches a mailbox with validated criteria and returns one UID-paged result set. */
 export async function searchMessages(accountId: string, mailbox: string, criteria: SearchCriteria, page: MessagePage): Promise<MessageSummary[]> {
   validMailbox(mailbox); validPage(page); const query = searchQuery(criteria);
   return safely(() => withImapClient(accountId, (client) => pageMessages(client, mailbox, query, page)));
 }
+/** Reads and parses one message while limiting the source bytes fetched from IMAP. */
 export async function readMessage(accountId: string, mailbox: string, uid: number): Promise<MessageContent> {
   validMailbox(mailbox); validUid(uid);
   return safely(() => withImapClient(accountId, async (client) => locked(client, mailbox, async () => {
@@ -104,10 +116,12 @@ export async function readMessage(accountId: string, mailbox: string, uid: numbe
     return parsed;
   })));
 }
+/** Retrieves one bounded attachment part from a message. */
 export async function getAttachment(accountId: string, mailbox: string, uid: number, partId: string): Promise<{ filename: string | null; contentType: string; contentBase64: string }> {
   validMailbox(mailbox); validUid(uid);
   return safely(() => withImapClient(accountId, async (client) => locked(client, mailbox, () => downloadAttachment(client, uid, partId))));
 }
+/** Applies only the requested read and flagged state changes to one message. */
 export async function setMessageFlags(accountId: string, mailbox: string, uid: number, flags: MessageFlags): Promise<void> {
   validMailbox(mailbox); validUid(uid);
   if (!flags || typeof flags !== 'object' || (!('seen' in flags) && !('flagged' in flags)) ||
@@ -119,14 +133,17 @@ export async function setMessageFlags(accountId: string, mailbox: string, uid: n
     }
   })));
 }
+/** Copies one message UID into another mailbox. */
 export async function copyMessage(accountId: string, mailbox: string, uid: number, destination: string): Promise<void> {
   validMailbox(mailbox); validMailbox(destination); validUid(uid);
   return safely(() => withImapClient(accountId, (client) => locked(client, mailbox, async () => { await client.messageCopy(String(uid), destination, { uid: true }); })));
 }
+/** Moves one message UID into another mailbox. */
 export async function moveMessage(accountId: string, mailbox: string, uid: number, destination: string): Promise<void> {
   validMailbox(mailbox); validMailbox(destination); validUid(uid);
   return safely(() => withImapClient(accountId, (client) => locked(client, mailbox, async () => { await client.messageMove(String(uid), destination, { uid: true }); })));
 }
+/** Moves a message to Trash when available, otherwise marks it deleted. */
 export async function deleteMessage(accountId: string, mailbox: string, uid: number): Promise<void> {
   validMailbox(mailbox); validUid(uid);
   return safely(() => withImapClient(accountId, async (client) => locked(client, mailbox, async () => {
@@ -135,6 +152,7 @@ export async function deleteMessage(accountId: string, mailbox: string, uid: num
     else await client.messageFlagsAdd(String(uid), ['\\Deleted'], { uid: true });
   })));
 }
+/** Permanently removes messages already marked deleted by closing the mailbox. */
 export async function expungeMessages(accountId: string, mailbox: string): Promise<void> {
   validMailbox(mailbox);
   return safely(() => withImapClient(accountId, async (client) => locked(client, mailbox, async () => { await client.mailboxClose(); })));

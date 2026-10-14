@@ -1,3 +1,4 @@
+-- Stores short-lived email-login challenges with hashed identifiers and codes, encrypted credentials, and a bounded attempt counter.
 CREATE TABLE email_login_challenges (
   challenge_id_digest TEXT PRIMARY KEY,
   normalized_username TEXT NOT NULL UNIQUE,

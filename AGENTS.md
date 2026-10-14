@@ -29,6 +29,7 @@ Mailstack MCP is a self-hosted MCP service for a Dovecot IMAP mailbox, with a we
 
 - For repository orientation or changes that cross subsystems, read `$repository-workflow`.
 - Before adding or changing an MCP tool, its input/output schemas, registration, or authorization, read `$mcp-tools`.
+- Before creating, changing, or reviewing source code, read `$code-comments` and follow its comment guidelines.
 
 ## Working rules
 

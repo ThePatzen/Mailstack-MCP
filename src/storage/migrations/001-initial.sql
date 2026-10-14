@@ -1,3 +1,4 @@
+-- Establishes account-scoped credentials, user tokens, tool permissions, sessions, and deployment metadata.
 CREATE TABLE accounts (
   id TEXT PRIMARY KEY,
   username TEXT NOT NULL UNIQUE,

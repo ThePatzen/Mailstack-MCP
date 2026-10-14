@@ -24,11 +24,13 @@ const TOOL_LABELS: Record<(typeof TOOL_NAMES)[number], string> = {
 };
 const COOKIE_OPTIONS = { path: '/', httpOnly: true, secure: true, sameSite: 'lax' as const };
 
+/** Trims user-facing text and caps its length before it reaches persistence or rendering. */
 function safeText(value: unknown, max: number): string {
   if (typeof value !== 'string') return '';
   return value.trim().slice(0, max);
 }
 
+/** Prevents browsers and intermediaries from caching pages that contain account data. */
 function setNoStore(res: Response): void {
   res.setHeader('Cache-Control', 'no-store, max-age=0');
   res.setHeader('Pragma', 'no-cache');
@@ -45,10 +47,12 @@ interface LoginOptions {
 const LOGIN_FAILED = 'Die Anmeldung ist fehlgeschlagen. Bitte prüfen Sie Ihre Angaben und versuchen Sie es erneut.';
 const CODE_FAILED = 'Der Code ist ungültig oder abgelaufen. Versuchen Sie es erneut oder fordern Sie einen neuen Code an.';
 
+/** Accepts only bounded strings without header or parser control characters. */
 function boundedInput(value: unknown, max: number): string {
   return typeof value === 'string' && value.length <= max && !/[\r\n\0]/.test(value) ? value : '';
 }
 
+/** Binds an email-login CSRF token to its challenge, account, and random nonce. */
 function emailLoginCsrf(challengeId: string, username: string, key: Buffer, nonce: string): string {
   const digest = createHmac('sha256', key)
     .update('mailstack-email-login-csrf:')
@@ -57,6 +61,7 @@ function emailLoginCsrf(challengeId: string, username: string, key: Buffer, nonc
   return `${nonce}.${digest}`;
 }
 
+/** Validates the signed account and challenge context before code verification. */
 function validEmailLoginContext(req: Request, key: Buffer): boolean {
   const token = req.body?._csrf;
   const challengeId = boundedInput(req.body?.challengeId, 43);
@@ -67,6 +72,7 @@ function validEmailLoginContext(req: Request, key: Buffer): boolean {
   return timingSafeEqual(Buffer.from(token), Buffer.from(expected));
 }
 
+/** Builds a privacy-preserving rate-limit key for the account targeted by a login request. */
 function accountKey(req: Request, encryptionKey: Buffer): string {
   // The code step's account key is bound to the challenge, so changing the hidden username cannot evade its limiter.
   const isCodeVerification = req.path === '/login/verify-code';
@@ -75,6 +81,7 @@ function accountKey(req: Request, encryptionKey: Buffer): string {
   return createHash('sha256').update(username || `missing:${ipKeyGenerator(req.ip ?? 'unknown')}`).digest('hex');
 }
 
+/** Renders a fresh login form and issues the CSRF state required by its selected method. */
 function renderLogin(res: Response, deps: WebDependencies, options: LoginOptions): void {
   const emailAvailable = Boolean(deps.smtp && deps.systemMail);
   const method = emailAvailable && options.method !== 'token' ? 'email' : 'token';
@@ -89,6 +96,7 @@ function renderLogin(res: Response, deps: WebDependencies, options: LoginOptions
   });
 }
 
+/** Reads and decodes one named cookie without trusting malformed percent escapes. */
 function readCookie(req: Request, name: string): string | undefined {
   const header = req.headers.cookie;
   if (!header) return undefined;
@@ -97,10 +105,12 @@ function readCookie(req: Request, name: string): string | undefined {
   try { return decodeURIComponent(part.slice(name.length + 1)); } catch { return undefined; }
 }
 
+/** Issues the management session as an HTTP-only cookie available to the root-mounted UI. */
 function issueCookie(res: Response, sessionId: string): void {
   res.cookie(SESSION_COOKIE, sessionId, { ...COOKIE_OPTIONS, maxAge: SESSION_TTL_MS });
 }
 
+/** Builds the public MCP URL only from a valid HTTPS request host. */
 function publicMcpUrl(req: Request): string | undefined {
   const forwardedHost = req.get('x-forwarded-host')?.split(',')[0]?.trim();
   const host = forwardedHost || req.get('host');
@@ -114,6 +124,7 @@ function publicMcpUrl(req: Request): string | undefined {
   }
 }
 
+/** Renders token management data scoped to the authenticated management account. */
 function renderTokens(req: Request, res: Response, deps: WebDependencies, options: { notice?: string; oneTimeToken?: string; labelValue?: string; status?: number; openPermissionsTokenId?: string } = {}): void {
   const accountId = (req as ManagementRequest).management?.accountId;
   if (!accountId) {
@@ -140,6 +151,7 @@ function renderTokens(req: Request, res: Response, deps: WebDependencies, option
   });
 }
 
+/** Creates management routes with login throttling, session checks, and CSRF protection. */
 export function createManagementRouter(deps: WebDependencies): Router {
   const router = Router();
   router.use((_req, res, next) => { setNoStore(res); next(); });
@@ -153,6 +165,7 @@ export function createManagementRouter(deps: WebDependencies): Router {
   const loggedIn = requireManagementSession;
   const csrf = requireCsrf(deps.encryptionKey);
 
+  // Resume an existing session before showing a new login form.
   router.get('/', (req, res) => {
     const cookie = readCookie(req, SESSION_COOKIE);
     if (typeof cookie === 'string') {
@@ -167,6 +180,7 @@ export function createManagementRouter(deps: WebDependencies): Router {
     renderLogin(res, deps, { error: '', username: '', method: req.query.method === 'token' ? 'token' : 'email' });
   });
 
+  // Authenticate with the operator token and mailbox password before creating an account session.
   router.post('/login', ipLimiter, accountLimiter, async (req, res) => {
     const username = safeText(req.body?.username, 1024);
     if (!verifyLoginCsrfToken(readCookie(req, LOGIN_CSRF_COOKIE), req.body?._csrf)) {
@@ -191,6 +205,7 @@ export function createManagementRouter(deps: WebDependencies): Router {
     }
   });
 
+  // Verify mailbox credentials before issuing a short-lived, one-time email challenge.
   router.post('/login/code', ipLimiter, accountLimiter, async (req, res) => {
     const requestTime = Date.now();
     const username = boundedInput(req.body?.username, 320).trim();
@@ -229,6 +244,7 @@ export function createManagementRouter(deps: WebDependencies): Router {
     renderLogin(res, deps, { error: '', username, method: 'email', challengeId });
   });
 
+  // Consume the code atomically so concurrent submissions cannot reuse the same challenge.
   router.post('/login/verify-code', ipLimiter, accountLimiter, (req, res) => {
     const username = boundedInput(req.body?.username, 1024);
     const challengeId = boundedInput(req.body?.challengeId, 43);
@@ -259,6 +275,7 @@ export function createManagementRouter(deps: WebDependencies): Router {
     }
   });
 
+  // Load token data only after session middleware has identified the account.
   router.get('/tokens', loggedIn, (req, res) => {
     const managementReq = req as ManagementRequest;
     const account = getAccountCredentials(managementReq.management!.accountId);
@@ -275,6 +292,7 @@ export function createManagementRouter(deps: WebDependencies): Router {
     });
   });
 
+  // Generate connection settings for the public HTTPS endpoint without embedding credentials.
   router.get('/plugin.zip', loggedIn, (req, res) => {
     const mcpUrl = publicMcpUrl(req);
     if (!mcpUrl) {
@@ -288,6 +306,7 @@ export function createManagementRouter(deps: WebDependencies): Router {
     res.send(archive);
   });
 
+  // Create tokens for the active account and expose the secret only in this response.
   router.post('/tokens', loggedIn, csrf, (req, res) => {
     const management = (req as ManagementRequest).management!;
     const label = safeText(req.body?.label, 101);
@@ -306,18 +325,21 @@ export function createManagementRouter(deps: WebDependencies): Router {
     }
   });
 
+  // Revoke a token within the current account and return a non-sensitive status notice.
   router.post('/tokens/:tokenId/revoke', loggedIn, csrf, (req, res) => {
     const management = (req as ManagementRequest).management!;
     const revoked = revokeToken(management.accountId, safeText(req.params.tokenId, 64));
     res.redirect(303, `/tokens?notice=${revoked ? 'revoked' : 'unchanged'}`);
   });
 
+  // Delete only a revoked token belonging to the current account.
   router.post('/tokens/:tokenId/delete', loggedIn, csrf, (req, res) => {
     const management = (req as ManagementRequest).management!;
     const deleted = deleteToken(management.accountId, safeText(req.params.tokenId, 64));
     res.redirect(303, `/tokens?notice=${deleted ? 'deleted' : 'unchanged'}`);
   });
 
+  // Change a known tool permission only when that tool is available in this deployment.
   router.post('/tokens/:tokenId/permissions/:tool', loggedIn, csrf, (req, res) => {
     const management = (req as ManagementRequest).management!;
     const tokenId = safeText(req.params.tokenId, 64);
@@ -336,6 +358,7 @@ export function createManagementRouter(deps: WebDependencies): Router {
     }
   });
 
+  // Destroy the persisted session before clearing the browser cookie.
   router.post('/logout', loggedIn, csrf, (req, res) => {
     const sessionId = (req as ManagementRequest).management!.sessionId;
     destroyManagementSession(sessionId);

@@ -26,6 +26,7 @@
         <p class="login-method-note">E-Mail-Codes sind derzeit nicht verfügbar. Melden Sie sich mit dem Verwaltungstoken Ihres Betreibers an.</p>
       <% } %>
       <% if (error) { %><div class="alert alert-error" role="alert"><%= error %></div><% } %>
+      <%# The challenge flow accepts only a one-time code, so the mailbox password is not rendered again. %>
       <% if (challengeId) { %>
         <% if (!error) { %><p class="alert alert-info" role="status">Code versendet. Er ist ab Anforderung zehn Minuten gültig.</p><% } %>
         <form method="post" action="/login/verify-code" autocomplete="on">

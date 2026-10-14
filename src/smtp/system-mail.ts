@@ -1,6 +1,7 @@
 import nodemailer from 'nodemailer';
 import type { AppConfig } from '../config.js';
 
+/** Sends a one-time management login code through the configured system sender. */
 export async function sendManagementLoginCode(
   config: Pick<AppConfig, 'smtp' | 'systemMail' | 'appTitle'>,
   recipient: string,

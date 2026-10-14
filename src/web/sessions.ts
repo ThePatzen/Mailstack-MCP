@@ -9,10 +9,12 @@ export interface ManagementRequest extends Request {
   accountUsername?: string;
 }
 
+/** Creates an account session with the management interface's fixed lifetime. */
 export function createManagementSession(accountId: string): string {
   return createSession(accountId, Date.now() + SESSION_TTL_MS);
 }
 
+/** Loads the signed-in account context or redirects requests with missing or expired sessions. */
 export function requireManagementSession(req: Request, res: Response, next: NextFunction): void {
   const sessionId = readCookie(req, SESSION_COOKIE);
   if (typeof sessionId !== 'string') {
@@ -29,10 +31,12 @@ export function requireManagementSession(req: Request, res: Response, next: Next
   next();
 }
 
+/** Invalidates a management session in persistent storage. */
 export function destroyManagementSession(sessionId: string): void {
   deleteSession(sessionId);
 }
 
+/** Reads and decodes one named cookie, treating malformed encoding as an absent cookie. */
 function readCookie(req: Request, name: string): string | undefined {
   const header = req.headers.cookie;
   if (!header) return undefined;

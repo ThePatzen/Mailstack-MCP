@@ -27,6 +27,7 @@ const sendEmailOutput = z.object({
   archiveError: z.string().optional(),
 });
 
+/** Registers the send capability only when enabled for this account token. */
 export function registerSendEmailTool(server: McpServer, principal: McpPrincipal): void {
   // SMTP is deployment-optional, and this capability is also per-token.
   if (!principal.enabledTools.includes('send_email')) return;

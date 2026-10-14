@@ -16,6 +16,7 @@ export interface WebDependencies {
   smtpConfigured: boolean;
 }
 
+/** Builds the management Express app with shared security headers, assets, and routes. */
 export function createManagementApp(dependencies: WebDependencies): Express {
   const app = express();
   app.disable('x-powered-by');
@@ -24,12 +25,14 @@ export function createManagementApp(dependencies: WebDependencies): Express {
   const moduleDir = __dirname;
   app.set('views', join(moduleDir, 'views'));
   app.use(helmet());
+  // Keep old bookmarks working while constraining the redirect to this server's root paths.
   app.use('/manage', (req, res) => {
     const suffix = req.originalUrl.slice('/manage'.length);
     res.redirect(308, `/${suffix.replace(/^\/+/, '')}`);
   });
   app.use('/assets', express.static(join(moduleDir, 'public'), { fallthrough: false, maxAge: '1h' }));
   if (dependencies.appLogoPath) {
+    // Keep the optional logo outside the static directory so deployments can use a mounted file.
     app.get('/brand/logo', (_req, res, next) => {
       res.setHeader('X-Content-Type-Options', 'nosniff');
       res.type(extname(dependencies.appLogoPath!).slice(1));

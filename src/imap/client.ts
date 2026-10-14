@@ -6,8 +6,10 @@ import { ImapServiceError, mapImapError } from './errors.js';
 
 let serviceConfig: AppConfig | undefined;
 
+/** Stores the process-wide IMAP settings used by later account operations. */
 export function configureImapService(config: AppConfig): void { serviceConfig = config; }
 
+/** Opens an account-scoped IMAP session, runs one operation, and always closes it. */
 export async function withImapClient<T>(accountId: string, action: (client: ImapFlow) => Promise<T>): Promise<T> {
   if (!accountId || typeof action !== 'function') throw new ImapServiceError('INVALID_INPUT');
   if (!serviceConfig) throw new ImapServiceError('INTERNAL');
@@ -19,6 +21,7 @@ export async function withImapClient<T>(accountId: string, action: (client: Imap
 
   const client = new ImapFlow({
     host: serviceConfig.imap.host, port: serviceConfig.imap.port,
+    // Keep both supported TLS modes certificate-verified through ImapFlow defaults.
     secure: serviceConfig.imap.tlsMode === 'implicit',
     doSTARTTLS: serviceConfig.imap.tlsMode === 'starttls',
     auth: { user: credentials.username, pass: password }, logger: false,

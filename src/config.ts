@@ -17,12 +17,14 @@ export interface AppConfig {
   sentFolder?: string;
 }
 
+/** Reads a required environment value and rejects missing or blank input. */
 function required(env: NodeJS.ProcessEnv, name: string): string {
   const value = env[name]?.trim();
   if (!value) throw new Error(`${name} is required and must not be empty.`);
   return value;
 }
 
+/** Parses a TCP port while rejecting fractional, unsafe, and out-of-range values. */
 function port(env: NodeJS.ProcessEnv, name: string, fallback: number): number {
   const raw = env[name]?.trim();
   if (!raw) return fallback;
@@ -34,6 +36,7 @@ function port(env: NodeJS.ProcessEnv, name: string, fallback: number): number {
   return value;
 }
 
+/** Reads a supported TLS mode without allowing certificate checks to be disabled. */
 function tlsMode(env: NodeJS.ProcessEnv, name: string, fallback: TlsMode): TlsMode {
   const value = env[name]?.trim().toLowerCase() || fallback;
   if (value !== 'implicit' && value !== 'starttls') {
@@ -42,6 +45,7 @@ function tlsMode(env: NodeJS.ProcessEnv, name: string, fallback: TlsMode): TlsMo
   return value;
 }
 
+/** Loads the encryption key from exactly one configured source and validates its 32-byte encoding. */
 function decodeEncryptionKey(env: NodeJS.ProcessEnv): Buffer {
   const encoded = env.ENCRYPTION_KEY?.trim();
   const file = env.ENCRYPTION_KEY_FILE?.trim();
@@ -64,6 +68,7 @@ function decodeEncryptionKey(env: NodeJS.ProcessEnv): Buffer {
   return key;
 }
 
+/** Validates environment settings and returns the normalized service configuration. */
 export function loadConfig(env: NodeJS.ProcessEnv): AppConfig {
   const rawTokens = required(env, 'MCP_STATIC_TOKENS');
   let staticTokens: unknown;
@@ -100,6 +105,7 @@ export function loadConfig(env: NodeJS.ProcessEnv): AppConfig {
     throw new Error('SMTP_SYSTEM_FROM must not contain CR, LF, or NUL characters.');
   }
   const systemMailFrom = rawSystemMailFrom?.trim();
+  // Enable email-code sign-in only when all three system-mail settings are present.
   const systemMail = systemMailUser && systemMailPassword && systemMailFrom
     ? { user: systemMailUser, password: systemMailPassword, from: systemMailFrom }
     : undefined;

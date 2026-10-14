@@ -5,6 +5,7 @@ interface ZipEntry {
   data: Buffer;
 }
 
+/** Calculates the checksum required by ZIP records for the uncompressed entry data. */
 function crc32(data: Buffer): number {
   let crc = 0xffffffff;
   for (const byte of data) {
@@ -14,6 +15,7 @@ function crc32(data: Buffer): number {
   return (crc ^ 0xffffffff) >>> 0;
 }
 
+/** Builds a small ZIP archive from entries without relying on an external archiver. */
 function zip(entries: ZipEntry[]): Buffer {
   const localParts: Buffer[] = [];
   const directoryParts: Buffer[] = [];
@@ -64,10 +66,12 @@ function zip(entries: ZipEntry[]): Buffer {
   return Buffer.concat([...localParts, ...directoryParts, end]);
 }
 
+/** Encodes a value as a readable JSON file inside the generated archive. */
 function jsonEntry(name: string, value: unknown): ZipEntry {
   return { name, data: Buffer.from(`${JSON.stringify(value, null, 2)}\n`, 'utf8') };
 }
 
+/** Converts a display name into the stable ASCII slug used for package paths and identifiers. */
 export function pluginPackageName(pluginName: string): string {
   const slug = pluginName.normalize('NFKD').replace(/[\u0300-\u036f]/g, '').toLowerCase()
     .replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 60).replace(/-+$/g, '');
@@ -75,6 +79,7 @@ export function pluginPackageName(pluginName: string): string {
   return slug;
 }
 
+/** Generates the installable plugin archive with endpoint metadata and credential setup guidance. */
 export function createMailstackPluginArchive(mcpUrl: string, pluginName: string): Buffer {
   const origin = new URL(mcpUrl).origin;
   const packageName = pluginPackageName(pluginName);

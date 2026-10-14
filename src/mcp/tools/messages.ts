@@ -23,6 +23,7 @@ const content = z.object({
 });
 const changed = z.object({ success: z.boolean() });
 
+/** Registers message tools enabled for this token, with per-call checks retained. */
 export function registerMessageTools(server: McpServer, principal: McpPrincipal): void {
   // Per-token registration keeps tools/list useful; toolCall remains the
   // enforcement point for every individual message operation.

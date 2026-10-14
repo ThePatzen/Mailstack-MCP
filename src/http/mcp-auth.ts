@@ -12,6 +12,7 @@ export interface McpPrincipal {
 type AuthenticatedRequest = Request & { auth?: AuthInfo };
 type AuthInfoWithPrincipal = AuthInfo & { extra?: Record<string, unknown> };
 
+/** Recovers a validated mailbox principal from the MCP SDK request context. */
 export function principalFromAuthInfo(authInfo: AuthInfo | undefined): McpPrincipal | null {
   const candidate = (authInfo as AuthInfoWithPrincipal | undefined)?.extra?.mailstackPrincipal;
   if (!candidate || typeof candidate !== 'object') return null;
@@ -22,12 +23,14 @@ export function principalFromAuthInfo(authInfo: AuthInfo | undefined): McpPrinci
   return principal as McpPrincipal;
 }
 
+/** Accepts only the service's fixed-format bearer token from an Authorization header. */
 function bearerToken(header: string | undefined): string | null {
   if (!header) return null;
   const match = /^Bearer ([A-Za-z0-9_-]{43})$/i.exec(header);
   return match?.[1] ?? null;
 }
 
+/** Authenticates an MCP request and attaches its account-scoped principal. */
 export function authenticateMcpRequest(req: Request, res: Response, next: NextFunction): void {
   // Resolve the bearer token at the HTTP boundary; tool handlers receive its
   // account and permissions as a principal, never as caller-supplied input.

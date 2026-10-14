@@ -1,3 +1,4 @@
+/* Local font files keep text rendering consistent without a third-party request. */
 @font-face {
   font-family: Lato;
   src: url('/assets/fonts/lato-regular.ttf') format('truetype');

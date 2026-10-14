@@ -2,6 +2,7 @@ import type { CallToolResult } from '@modelcontextprotocol/server';
 import { ImapServiceError } from '../../imap/errors.js';
 import type { McpPrincipal } from '../../http/mcp-auth.js';
 
+/** Enforces per-token permissions immediately before executing a mail operation. */
 export function executeAuthorized<T>(principal: McpPrincipal, toolName: string, action: () => Promise<T>): Promise<T> {
   // Hiding a tool from tools/list is not authorization; check before any mail
   // operation so a direct call cannot bypass the token's permission set.
@@ -11,6 +12,7 @@ export function executeAuthorized<T>(principal: McpPrincipal, toolName: string, 
   return action();
 }
 
+/** Runs an authorized tool and converts failures into safe MCP error responses. */
 export async function toolCall<T extends Record<string, unknown>>(
   principal: McpPrincipal,
   toolName: string,

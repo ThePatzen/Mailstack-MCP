@@ -10,6 +10,7 @@ const mailboxOutput = z.object({
   specialUse: z.string().nullable(), flags: z.array(z.string()),
 });
 
+/** Registers mailbox tools that this token is allowed to discover and invoke. */
 export function registerMailboxTools(server: McpServer, principal: McpPrincipal): void {
   // Expose only mailbox operations allowed by this token. toolCall repeats the
   // check when each handler is invoked.

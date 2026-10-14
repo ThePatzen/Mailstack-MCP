@@ -9,13 +9,16 @@ const SAFE_MESSAGES: Record<ImapErrorCode, string> = {
   INTERNAL: 'The mailbox operation failed.',
 };
 
+/** Represents a stable mailbox error that can be safely exposed to MCP callers. */
 export class ImapServiceError extends Error {
+  /** Creates an error whose public message is safe to return to an MCP caller. */
   constructor(readonly code: ImapErrorCode, message = SAFE_MESSAGES[code]) {
     super(message);
     this.name = 'ImapServiceError';
   }
 }
 
+/** Maps library and server errors to stable, non-sensitive service error codes. */
 export function mapImapError(error: unknown): ImapServiceError {
   if (error instanceof ImapServiceError) return error;
   const value = error && typeof error === 'object' ? error as Record<string, unknown> : {};
@@ -32,6 +35,7 @@ export function mapImapError(error: unknown): ImapServiceError {
   return new ImapServiceError('INTERNAL');
 }
 
+/** Converts failures from an IMAP operation into the service's safe error set. */
 export async function safely<T>(action: () => Promise<T>): Promise<T> {
   try { return await action(); } catch (error) { throw mapImapError(error); }
 }

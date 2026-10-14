@@ -27,12 +27,15 @@ interface BodyStructureNode {
   size?: number;
   childNodes?: BodyStructureNode[];
 }
+/** Formats parsed address groups as bounded, human-readable strings. */
 function addresses(value: { value?: Array<{ name?: string; address?: string }> } | Array<{ value?: Array<{ name?: string; address?: string }> }> | undefined): string[] {
   const groups = Array.isArray(value) ? value : value ? [value] : [];
   return groups.flatMap((group) => group.value ?? []).slice(0, 50).map((item) => (item.name ? `${item.name} <${item.address ?? ''}>` : item.address ?? '').slice(0, 512));
 }
+/** Walks the IMAP body tree and returns bounded metadata for attachment-like parts. */
 export function attachmentParts(root: BodyStructureNode | undefined): AttachmentPart[] {
   const attachments: AttachmentPart[] = [];
+  /** Visits a MIME node and its children while enforcing the attachment count limit. */
   const visit = (node: BodyStructureNode): void => {
     const contentType = node.type?.toLowerCase() || 'application/octet-stream';
     const majorType = contentType.split('/')[0];
@@ -55,6 +58,7 @@ export function attachmentParts(root: BodyStructureNode | undefined): Attachment
   return attachments;
 }
 
+/** Parses bounded raw message bytes into the public message representation. */
 export async function parseMessage(uid: number, source: Buffer, attachments: AttachmentPart[] = []): Promise<MessageContent> {
   if (!Buffer.isBuffer(source) || source.length > MAX_MESSAGE_BYTES) throw new ImapServiceError('TOO_LARGE');
   try {
@@ -69,6 +73,7 @@ export async function parseMessage(uid: number, source: Buffer, attachments: Att
     };
   } catch { throw new ImapServiceError('CONNECTION', 'The message content could not be parsed.'); }
 }
+/** Downloads one MIME part and stops reading as soon as its byte limit is exceeded. */
 export async function downloadAttachment(client: ImapFlow, uid: number, partId: string): Promise<{ filename: string | null; contentType: string; contentBase64: string }> {
   if (!Number.isSafeInteger(uid) || uid < 1 || typeof partId !== 'string' || !/^\d+(?:\.\d+)*$/.test(partId)) throw new ImapServiceError('INVALID_INPUT');
   const { meta, content } = await client.download(uid, partId, { uid: true, maxBytes: MAX_ATTACHMENT_BYTES + 1 });

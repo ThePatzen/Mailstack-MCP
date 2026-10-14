@@ -34,10 +34,12 @@ interface TokenRow {
   last_used_at: number | null; revoked_at: number | null; token_hash: string;
 }
 
+/** Maps the database row to the public account shape without exposing encrypted credentials. */
 function accountRecord(row: AccountRow): AccountRecord {
   return { id: row.id, username: row.username, createdAt: row.created_at, updatedAt: row.updated_at };
 }
 
+/** Adds the token's per-tool permissions while keeping its secret hash private. */
 function tokenSummary(row: TokenRow): TokenSummary {
   const permissions = Object.fromEntries((getDatabase().prepare('SELECT tool_name, allowed FROM tool_permissions WHERE token_id = ? ORDER BY tool_name').all(row.id) as Array<{ tool_name: string; allowed: number }>).map((permission) => [permission.tool_name, permission.allowed === 1]));
   return {
@@ -47,6 +49,7 @@ function tokenSummary(row: TokenRow): TokenSummary {
   };
 }
 
+/** Creates an account or replaces its encrypted password, returning only non-secret account fields. */
 export function createOrUpdateAccount(username: string, encryptedPassword: EncryptedSecret): AccountRecord {
   if (!username || username.length > 1024 || /[\r\n\0]/.test(username)) throw new Error('Invalid account username.');
   const db = getDatabase();
@@ -58,12 +61,14 @@ export function createOrUpdateAccount(username: string, encryptedPassword: Encry
   return accountRecord(db.prepare('SELECT * FROM accounts WHERE username = ?').get(username) as AccountRow);
 }
 
+/** Returns the stored login credentials for one account, or null when that account is missing. */
 export function getAccountCredentials(accountId: string): { username: string; encryptedPassword: EncryptedSecret } | null {
   const row = getDatabase().prepare('SELECT * FROM accounts WHERE id = ?').get(accountId) as AccountRow | undefined;
   if (!row) return null;
   return { username: row.username, encryptedPassword: { ciphertext: row.password_ciphertext, nonce: row.password_nonce, tag: row.password_tag } };
 }
 
+/** Creates a token for one account and returns its raw value only at creation time. */
 export function createUserToken(accountId: string, label: string): { token: string; summary: TokenSummary } {
   const cleanLabel = label.trim();
   if (!cleanLabel || cleanLabel.length > 100 || /[\r\n\0]/.test(cleanLabel)) throw new Error('Token label must contain 1 to 100 characters.');
@@ -74,6 +79,7 @@ export function createUserToken(accountId: string, label: string): { token: stri
   return { token, summary: tokenSummary(db.prepare('SELECT * FROM tokens WHERE id = ?').get(id) as TokenRow) };
 }
 
+/** Authenticates an active token, updates its last-use time, and returns its account permissions. */
 export function findUserToken(token: string): AuthenticatedToken | null {
   // All issued tokens are a canonical 32-byte base64url encoding.
   if (!/^[A-Za-z0-9_-]{43}$/.test(token)) return null;
@@ -89,18 +95,22 @@ export function findUserToken(token: string): AuthenticatedToken | null {
   })();
 }
 
+/** Lists tokens belonging to the requested account, including revoked entries for management. */
 export function listTokens(accountId: string): TokenSummary[] {
   return (getDatabase().prepare('SELECT * FROM tokens WHERE account_id = ? ORDER BY created_at DESC, id').all(accountId) as TokenRow[]).map(tokenSummary);
 }
 
+/** Revokes an active token only when it belongs to the requested account. */
 export function revokeToken(accountId: string, tokenId: string): boolean {
   return getDatabase().prepare('UPDATE tokens SET revoked_at = ? WHERE id = ? AND account_id = ? AND revoked_at IS NULL').run(Date.now(), tokenId, accountId).changes > 0;
 }
 
+/** Permanently deletes a revoked token owned by the requested account. */
 export function deleteToken(accountId: string, tokenId: string): boolean {
   return getDatabase().prepare('DELETE FROM tokens WHERE id = ? AND account_id = ? AND revoked_at IS NOT NULL').run(tokenId, accountId).changes > 0;
 }
 
+/** Sets one tool permission for an active token owned by the requested account. */
 export function setToolPermission(accountId: string, tokenId: string, toolName: string, allowed: boolean): void {
   if (!/^[a-z][a-z0-9_]{0,99}$/.test(toolName) || typeof allowed !== 'boolean') throw new Error('Invalid tool permission.');
   const db = getDatabase();
@@ -111,6 +121,7 @@ export function setToolPermission(accountId: string, tokenId: string, toolName: 
   if (!result.changes) throw new Error('Active token not found for this account.');
 }
 
+/** Stores a hash of a new session identifier and removes expired sessions in the same transaction. */
 export function createSession(accountId: string, expiresAt: number): string {
   if (!Number.isSafeInteger(expiresAt) || expiresAt <= Date.now()) throw new Error('Session expiration must be in the future.');
   const sessionId = generateToken();
@@ -122,6 +133,7 @@ export function createSession(accountId: string, expiresAt: number): string {
   return sessionId;
 }
 
+/** Resolves a valid session identifier to its account and expiration, deleting expired records. */
 export function findSession(sessionId: string): { accountId: string; expiresAt: number } | null {
   if (!/^[A-Za-z0-9_-]{43}$/.test(sessionId)) return null;
   const db = getDatabase();
@@ -135,6 +147,7 @@ export function findSession(sessionId: string): { accountId: string; expiresAt: 
   return { accountId: row.account_id, expiresAt: row.expires_at };
 }
 
+/** Deletes a session by its one-way identifier hash. */
 export function deleteSession(sessionId: string): void {
   getDatabase().prepare('DELETE FROM sessions WHERE session_hash = ?').run(hashToken(sessionId));
 }
@@ -152,12 +165,14 @@ interface EmailLoginChallengeRow {
 
 const EMAIL_LOGIN_MAX_ATTEMPTS = 5;
 
+/** Compares fixed-size digest bytes without leaking their contents through timing differences. */
 function emailLoginDigestMatches(candidateDigest: string, storedDigest: string): boolean {
   const candidate = Buffer.from(candidateDigest, 'hex');
   const stored = Buffer.from(storedDigest, 'hex');
   return stored.length === candidate.length && timingSafeEqual(candidate, stored);
 }
 
+/** Stores a short-lived email code challenge while replacing any older challenge for that username. */
 export function createEmailLoginChallenge(input: {
   username: string;
   encryptedPassword: EncryptedSecret;
@@ -188,6 +203,7 @@ export function createEmailLoginChallenge(input: {
   }).immediate();
 }
 
+/** Checks a login code once, limits guesses, and returns credentials only after successful consumption. */
 export function consumeEmailLoginChallenge(input: {
   challengeId: string;
   code: string;
@@ -224,6 +240,7 @@ export function consumeEmailLoginChallenge(input: {
   }).immediate();
 }
 
+/** Removes a pending email login challenge using its keyed identifier digest. */
 export function invalidateEmailLoginChallenge(challengeId: string, encryptionKey: Buffer): void {
   getDatabase().prepare('DELETE FROM email_login_challenges WHERE challenge_id_digest = ?').run(
     hashEmailLoginValue(challengeId, 'email-login-challenge-id', encryptionKey),

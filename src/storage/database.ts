@@ -5,6 +5,7 @@ import { decryptSecret, encryptSecret, type EncryptedSecret } from '../security/
 
 let database: Database.Database | undefined;
 
+/** Opens the private SQLite database, applies pending migrations, and verifies its encryption key. */
 export function initializeDatabase(dataDir: string, encryptionKey: Buffer): Database.Database {
   if (database) throw new Error('Database is already initialized.');
   const databaseDir = join(dataDir, 'database');
@@ -19,6 +20,7 @@ export function initializeDatabase(dataDir: string, encryptionKey: Buffer): Data
   if (legacyExists) {
     const previous = new Database(legacyFilename);
     try {
+      // Checkpoint WAL data before moving the database so committed changes are not left in a sidecar file.
       const checkpoint = previous.pragma('wal_checkpoint(TRUNCATE)') as Array<{ busy: number }>;
       if (checkpoint[0]?.busy) throw new Error('The legacy database is busy and could not be safely moved. Stop other service instances and retry.');
     } finally {
@@ -61,11 +63,13 @@ export function initializeDatabase(dataDir: string, encryptionKey: Buffer): Data
   }
 }
 
+/** Returns the initialized shared connection and fails fast when startup has not completed. */
 export function getDatabase(): Database.Database {
   if (!database) throw new Error('Database has not been initialized.');
   return database;
 }
 
+/** Closes the shared connection and allows a later service start to initialize it again. */
 export async function closeDatabase(): Promise<void> {
   database?.close();
   database = undefined;
