@@ -4,7 +4,7 @@ import rateLimit, { ipKeyGenerator } from 'express-rate-limit';
 import { encryptSecret } from '../security/crypto.js';
 import { sendManagementLoginCode } from '../smtp/system-mail.js';
 import { consumeEmailLoginChallenge, createEmailLoginChallenge, invalidateEmailLoginChallenge, createOrUpdateAccount, createUserToken, deleteToken, findSession, getAccountCredentials, listTokens, revokeToken, setToolPermission } from '../storage/repository.js';
-import { createMailstackPluginArchive } from './plugin-package.js';
+import { createMailstackPluginArchive, pluginPackageName } from './plugin-package.js';
 import { verifyImapLogin, verifyStaticToken } from './auth.js';
 import type { WebDependencies } from './app.js';
 import { createLoginCsrfToken, csrfToken, LOGIN_CSRF_COOKIE, requireCsrf, verifyLoginCsrfToken } from './csrf.js';
@@ -85,7 +85,7 @@ function renderLogin(res: Response, deps: WebDependencies, options: LoginOptions
   res.cookie(LOGIN_CSRF_COOKIE, csrf, { ...COOKIE_OPTIONS, maxAge: 15 * 60 * 1000 });
   setNoStore(res);
   res.status(options.error ? 401 : 200).render('login', {
-    ...options, emailAvailable, method, challengeId, accountUsername, csrf,
+    ...options, appTitle: deps.appTitle, appLogoUrl: deps.appLogoPath ? '/manage/brand/logo' : '', emailAvailable, method, challengeId, accountUsername, csrf,
   });
 }
 
@@ -125,6 +125,8 @@ function renderTokens(req: Request, res: Response, deps: WebDependencies, option
   setNoStore(res);
   res.status(options.status ?? 200).render('tokens', {
     username: username ?? '',
+    appTitle: deps.appTitle,
+    appLogoUrl: deps.appLogoPath ? '/manage/brand/logo' : '',
     tokens: summaries,
     toolNames: TOOL_NAMES.filter((tool) => tool !== 'send_email' || deps.smtpConfigured),
     toolLabels: TOOL_LABELS,
@@ -133,6 +135,7 @@ function renderTokens(req: Request, res: Response, deps: WebDependencies, option
     oneTimeToken: options.oneTimeToken ?? '',
     labelValue: options.labelValue ?? '',
     mcpUrl: publicMcpUrl(req) ?? '',
+    pluginName: deps.pluginName,
     openPermissionsTokenId: options.openPermissionsTokenId ?? '',
   });
 }
@@ -217,7 +220,7 @@ export function createManagementRouter(deps: WebDependencies): Router {
         expiresAt,
         encryptionKey: deps.encryptionKey,
       });
-      await sendManagementLoginCode({ smtp: deps.smtp, systemMail: deps.systemMail }, username, code, expiresAt);
+      await sendManagementLoginCode({ smtp: deps.smtp, systemMail: deps.systemMail, appTitle: deps.appTitle }, username, code, expiresAt);
     } catch {
       if (challengeId) invalidateEmailLoginChallenge(challengeId, deps.encryptionKey);
       renderLogin(res, deps, { error: LOGIN_FAILED, username, method: 'email' });
@@ -278,10 +281,10 @@ export function createManagementRouter(deps: WebDependencies): Router {
       res.status(400).send('Das Plugin kann nur über die öffentliche HTTPS-Adresse heruntergeladen werden.');
       return;
     }
-    const archive = createMailstackPluginArchive(mcpUrl);
+    const archive = createMailstackPluginArchive(mcpUrl, deps.pluginName);
     setNoStore(res);
     res.setHeader('Content-Type', 'application/zip');
-    res.setHeader('Content-Disposition', 'attachment; filename="mailstack-mcp-plugin.zip"');
+    res.setHeader('Content-Disposition', `attachment; filename="${pluginPackageName(deps.pluginName)}.zip"`);
     res.send(archive);
   });
 

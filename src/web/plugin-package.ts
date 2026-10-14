@@ -68,24 +68,31 @@ function jsonEntry(name: string, value: unknown): ZipEntry {
   return { name, data: Buffer.from(`${JSON.stringify(value, null, 2)}\n`, 'utf8') };
 }
 
-export function createMailstackPluginArchive(mcpUrl: string): Buffer {
+export function pluginPackageName(pluginName: string): string {
+  const slug = pluginName.normalize('NFKD').replace(/[\u0300-\u036f]/g, '').toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 60).replace(/-+$/g, '');
+  if (!slug) throw new Error('PLUGIN_NAME must include at least one ASCII letter or number.');
+  return slug;
+}
+
+export function createMailstackPluginArchive(mcpUrl: string, pluginName: string): Buffer {
   const origin = new URL(mcpUrl).origin;
-  const pluginName = 'mailstack-mcp';
+  const packageName = pluginPackageName(pluginName);
   const pluginJson = {
     $schema: 'https://agent-plugins.org/schemas/1.0.0/plugin.schema.json',
-    name: pluginName,
+    name: packageName,
     version: '0.1.0',
-    description: 'Greift mit den freigegebenen Funktionen sicher auf ein Mailpostfach zu.',
-    author: { name: 'Mailstack MCP' },
+    description: `Greift mit den freigegebenen Funktionen sicher auf ein Mailpostfach zu.`,
+    author: { name: pluginName },
     homepage: `${origin}/manage`,
     keywords: ['email', 'imap', 'mail'],
     extensions: {
       'com.openai': {
         interface: {
-          displayName: 'Mailstack MCP',
-          shortDescription: 'Mailpostfach per MCP',
-          longDescription: 'Verbindet sich mit Ihrem Mailstack-MCP-Server. Die verfügbaren Funktionen richten sich nach den Berechtigungen des verwendeten User-Tokens.',
-          developerName: 'Mailstack MCP',
+          displayName: pluginName,
+          shortDescription: `${pluginName} per MCP`,
+          longDescription: `Verbindet sich mit Ihrem ${pluginName}-Server. Die verfügbaren Funktionen richten sich nach den Berechtigungen des verwendeten User-Tokens.`,
+          developerName: pluginName,
           category: 'Productivity',
           capabilities: ['Read', 'Write'],
           websiteURL: `${origin}/manage`,
@@ -98,7 +105,7 @@ export function createMailstackPluginArchive(mcpUrl: string): Buffer {
   const mcpJson = {
     $schema: 'https://agent-plugins.org/schemas/1.0.0/mcp.schema.json',
     mcpServers: {
-      mailstack: {
+      [packageName]: {
         type: 'streamable-http',
         url: mcpUrl,
         extensions: {
@@ -111,10 +118,10 @@ export function createMailstackPluginArchive(mcpUrl: string): Buffer {
   };
   const setupSkill = `---
 name: setup
-description: Erklärt die Verbindung mit dem persönlichen Mailstack-MCP-Server.
+description: Erklärt die Verbindung mit dem persönlichen ${pluginName}-Server.
 ---
 
-# Mailstack MCP verbinden
+# ${pluginName} verbinden
 
 Der Server-Endpunkt dieses Plugins ist \`${mcpUrl}\`.
 
@@ -124,13 +131,13 @@ Geben Sie das Token niemals in den Chat ein und speichern Sie es nicht in Plugin
 
 Das statische Verwaltungstoken wird ausschließlich für die Anmeldung auf \`${origin}/manage\` benötigt. Es funktioniert nicht als MCP-Zugang.
 `;
-  const installGuide = `# Mailstack MCP Plugin installieren
+  const installGuide = `# ${pluginName} Plugin installieren
 
 Dieses Paket enthält die Verbindung zu \`${mcpUrl}\`. Es enthält keine Zugangsdaten.
 
 ## Codex und ChatGPT-Desktop-App
 
-1. Entpacken Sie das Archiv in \`~/.codex/plugins\`; dadurch entsteht der Ordner \`~/.codex/plugins/mailstack-mcp\`.
+1. Entpacken Sie das Archiv in \`~/.codex/plugins\`; dadurch entsteht der Ordner \`~/.codex/plugins/${packageName}\`.
 2. Legen Sie \`~/.agents/plugins/marketplace.json\` an oder ergänzen Sie die Datei um diesen Eintrag:
 
 \`\`\`json
@@ -138,8 +145,8 @@ Dieses Paket enthält die Verbindung zu \`${mcpUrl}\`. Es enthält keine Zugangs
   "name": "mailstack-local",
   "plugins": [
     {
-      "name": "mailstack-mcp",
-      "source": { "source": "local", "path": "./.codex/plugins/mailstack-mcp" },
+      "name": "${packageName}",
+      "source": { "source": "local", "path": "./.codex/plugins/${packageName}" },
       "policy": { "installation": "AVAILABLE", "authentication": "ON_INSTALL" },
       "category": "Productivity"
     }
@@ -147,16 +154,16 @@ Dieses Paket enthält die Verbindung zu \`${mcpUrl}\`. Es enthält keine Zugangs
 }
 \`\`\`
 
-3. Starten Sie die ChatGPT-Desktop-App neu und installieren Sie Mailstack MCP unter **Plugins** aus der Quelle \`mailstack-local\`. In Codex CLI können Sie den Plugin-Browser mit \`/plugins\` öffnen.
+3. Starten Sie die ChatGPT-Desktop-App neu und installieren Sie ${pluginName} unter **Plugins** aus der Quelle \`mailstack-local\`. In Codex CLI können Sie den Plugin-Browser mit \`/plugins\` öffnen.
 4. Geben Sie beim Verbinden ein persönliches User-Token ein. Erstellen oder widerrufen Sie Tokens unter \`${origin}/manage\`.
 
 Der Plugin-Ordner ist lokal installiert. Damit andere Nutzer das Plugin beziehen können, muss es über eine gemeinsame Marketplace-Quelle verteilt werden.
 `;
 
   return zip([
-    jsonEntry(`${pluginName}/plugin.json`, pluginJson),
-    jsonEntry(`${pluginName}/mcp.json`, mcpJson),
-    { name: `${pluginName}/skills/setup/SKILL.md`, data: Buffer.from(setupSkill, 'utf8') },
-    { name: `${pluginName}/INSTALL.md`, data: Buffer.from(installGuide, 'utf8') },
+    jsonEntry(`${packageName}/plugin.json`, pluginJson),
+    jsonEntry(`${packageName}/mcp.json`, mcpJson),
+    { name: `${packageName}/skills/setup/SKILL.md`, data: Buffer.from(setupSkill, 'utf8') },
+    { name: `${packageName}/INSTALL.md`, data: Buffer.from(installGuide, 'utf8') },
   ]);
 }

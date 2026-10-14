@@ -1,11 +1,11 @@
 {
   "schemaVersion": 2,
-  "generatedAt": "2026-10-10T00:00:00Z",
+  "generatedAt": "2026-10-14T00:00:00Z",
   "title": "Design System: Mailstack MCP",
   "extensions": {
     "shadows": [
-      { "name": "card-ambient", "value": "0 2px 8px rgba(36, 50, 74, 0.024)", "purpose": "Subtle separation for white cards on the cool gray ground." },
-      { "name": "primary-button", "value": "0 3px 7px rgba(37, 99, 235, 0.145)", "purpose": "Small depth cue for the primary action." }
+      { "name": "card-ambient", "value": "0 2px 8px #24324a06", "purpose": "Subtle separation for white cards on the cool gray ground." },
+      { "name": "primary-button", "value": "0 3px 7px #2563eb25", "purpose": "Small depth cue for the primary action." }
     ],
     "breakpoints": [
       { "name": "tablet", "value": "900px" },
@@ -18,28 +18,55 @@
       "kind": "button",
       "refersTo": "button-primary",
       "description": "The main action on a management screen.",
-      "html": "<button class=\"button\">Create token</button>",
-      "css": ".button { display: inline-flex; align-items: center; justify-content: center; min-height: 37px; padding: 0 14px; border: 0; border-radius: 7px; background: #2563eb; color: #fff; font: 600 11px Lato, ui-sans-serif, system-ui, sans-serif; cursor: pointer; } .button:hover { background: #1d4ed8; }"
+      "html": "<button class=\"ds-button-primary\">Create token</button>",
+      "css": ".ds-button-primary { display: inline-flex; align-items: center; justify-content: center; min-height: 37px; padding: 0 14px; border: 1px solid transparent; border-radius: 7px; background: #2563eb; color: #fff; box-shadow: 0 3px 7px #2563eb25; font: 600 11px Lato, ui-sans-serif, system-ui, sans-serif; cursor: pointer; transition: background .16s, transform .16s; } .ds-button-primary:hover { background: #1d4ed8; transform: translateY(-1px); } .ds-button-primary:focus-visible { outline: 2px solid #1d4ed8; outline-offset: 3px; } .ds-button-primary:active { transform: translateY(0); }"
+    },
+    {
+      "name": "Secondary Button",
+      "kind": "button",
+      "description": "A quiet bordered action for copy and secondary tasks.",
+      "html": "<button class=\"ds-button-secondary\">Copy</button>",
+      "css": ".ds-button-secondary { display: inline-flex; align-items: center; justify-content: center; min-height: 37px; padding: 0 14px; border: 1px solid #dfe5ed; border-radius: 7px; background: #fff; color: #46546a; font: 600 11px Lato, ui-sans-serif, system-ui, sans-serif; cursor: pointer; transition: background .16s, transform .16s; } .ds-button-secondary:hover { background: #f6f8fb; } .ds-button-secondary:focus-visible { outline: 2px solid #1d4ed8; outline-offset: 3px; } .ds-button-secondary:active { transform: translateY(1px); }"
+    },
+    {
+      "name": "Text Field",
+      "kind": "input",
+      "description": "A compact white field with a clear blue focus state.",
+      "html": "<label class=\"ds-field\"><span>Token name</span><input type=\"text\" placeholder=\"Desktop assistant\"></label>",
+      "css": ".ds-field { display: grid; gap: 6px; color: #48566b; font: 600 10px Lato, ui-sans-serif, system-ui, sans-serif; } .ds-field input { height: 37px; padding: 0 11px; border: 1px solid #dfe5ed; border-radius: 7px; background: #fff; color: #29364a; font: 400 11px Lato, ui-sans-serif, system-ui, sans-serif; } .ds-field input:focus-visible { border-color: #6f9cf3; outline: 3px solid #3b82f616; }"
     },
     {
       "name": "Management Card",
       "kind": "card",
       "refersTo": "card",
-      "description": "A white bounded surface for token details and creation controls.",
-      "html": "<section class=\"card\"><strong>Access token</strong><p>Manage permissions for this token.</p></section>",
-      "css": ".card { padding: 19px 20px; border: 1px solid #e7ebf0; border-radius: 10px; background: #fff; color: #182338; box-shadow: 0 2px 8px rgba(36, 50, 74, 0.024); font: 400 12px/1.65 Lato, ui-sans-serif, system-ui, sans-serif; } .card p { color: #778397; }"
+      "description": "A white bounded surface for token details and setup controls.",
+      "html": "<section class=\"ds-card\"><strong>Access token</strong><p>Manage permissions for this token.</p></section>",
+      "css": ".ds-card { padding: 19px 20px; border: 1px solid #e7ebf0; border-radius: 10px; background: #fff; color: #182338; box-shadow: 0 2px 8px #24324a06; font: 400 12px/1.65 Lato, ui-sans-serif, system-ui, sans-serif; } .ds-card strong { color: #263348; font-weight: 700; } .ds-card p { margin: 4px 0 0; color: #778397; }"
+    },
+    {
+      "name": "Active Navigation Item",
+      "kind": "nav",
+      "description": "The active destination in the compact mailbox-aware rail.",
+      "html": "<a class=\"ds-nav-item\" href=\"#tokens\" aria-current=\"page\">Access tokens</a>",
+      "css": ".ds-nav-item { display: flex; align-items: center; min-height: 38px; padding: 10px 11px; border-radius: 8px; background: #edf4ff; color: #2461d9; font: 600 12px Lato, ui-sans-serif, system-ui, sans-serif; text-decoration: none; } .ds-nav-item:hover { background: #e5efff; } .ds-nav-item:focus-visible { outline: 2px solid #1d4ed8; outline-offset: 2px; }"
+    },
+    {
+      "name": "Permission Switch",
+      "kind": "custom",
+      "description": "An individually labeled, compact tool permission control.",
+      "html": "<label class=\"ds-permission\"><span>Read messages</span><input type=\"checkbox\" checked><i aria-hidden=\"true\"></i></label>",
+      "css": ".ds-permission { display: flex; align-items: center; justify-content: space-between; gap: 10px; min-height: 34px; padding-right: 16px; border-bottom: 1px solid #f0f2f5; color: #526074; font: 400 10px Lato, ui-sans-serif, system-ui, sans-serif; } .ds-permission input { position: absolute; opacity: 0; } .ds-permission i { width: 29px; height: 17px; padding: 2px; border-radius: 20px; background: #cbd2dc; transition: background .15s; } .ds-permission i::after { content: ''; display: block; width: 13px; height: 13px; border-radius: 50%; background: #fff; box-shadow: 0 1px 2px #24324a25; transition: transform .15s; } .ds-permission input:checked + i { background: #3979ee; } .ds-permission input:checked + i::after { transform: translateX(12px); } .ds-permission input:focus-visible + i { outline: 2px solid #1d4ed8; outline-offset: 2px; }"
     }
   ],
   "narrative": {
     "northStar": "A calm control surface for personal mailbox access.",
-    "overview": "The management UI follows the user-selected light administration reference. It keeps the mailbox identity and token controls easy to scan, with a compact navigation rail, restrained blue actions, white cards, and clear status labels.",
-    "keyCharacteristics": ["Light neutral page ground", "Compact mailbox-aware navigation", "Blue primary actions and permission switches", "Subtle borders and restrained depth"],
+    "overview": "The management UI keeps mailbox identity and token controls easy to scan. A compact navigation rail, cool light ground, white bounded surfaces, restrained blue actions, and clear status labels make the service feel dependable without turning it into a generic operations dashboard. Locally hosted Lato supplies a consistent voice. The product title and optional raster logo are deployment-configurable; when no logo is set, the existing blue M mark remains.",
+    "keyCharacteristics": ["Light and neutral", "Mailbox-aware navigation", "Blue actions and permission controls", "Subtle borders with restrained depth", "Compact work-focused typography"],
     "rules": [
-      { "name": "Mailbox-first context", "body": "Keep the connected mailbox identity close to token management.", "section": "layout" },
-      { "name": "One-time secret", "body": "Show the full user token only when created and provide a copy action.", "section": "components" },
-      { "name": "Conditional SMTP", "body": "Expose send permission only when SMTP is configured.", "section": "components" }
+      { "name": "The Quiet Surface Rule", "body": "Use color to indicate action or state; rely on surface contrast and fine borders for ordinary structure.", "section": "colors" },
+      { "name": "The Mailbox Context Rule", "body": "Keep the connected mailbox identity visible alongside its personal access-token controls.", "section": "layout" }
     ],
-    "dos": ["Use blue for primary actions and permission controls.", "Keep each permission labeled and independently operable."],
-    "donts": ["Do not add unrelated dashboard or team navigation.", "Do not use heavy shadows or decorative display type."]
+    "dos": ["Do keep mailbox identity, token state, and tool permissions in the same management flow.", "Do show the full user token only at creation and provide a copy action.", "Do keep SMTP permission conditional on SMTP being configured.", "Do use inline SVGs for interface icons instead of text glyphs."],
+    "donts": ["Don't add unrelated dashboard, billing, team, or account-navigation patterns.", "Don't use decorative display type or heavy shadows."]
   }
 }

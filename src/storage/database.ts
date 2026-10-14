@@ -1,5 +1,5 @@
 import Database from 'better-sqlite3';
-import { chmodSync, readFileSync } from 'node:fs';
+import { chmodSync, existsSync, mkdirSync, readFileSync, renameSync } from 'node:fs';
 import { join } from 'node:path';
 import { decryptSecret, encryptSecret, type EncryptedSecret } from '../security/crypto.js';
 
@@ -7,7 +7,25 @@ let database: Database.Database | undefined;
 
 export function initializeDatabase(dataDir: string, encryptionKey: Buffer): Database.Database {
   if (database) throw new Error('Database is already initialized.');
-  const filename = join(dataDir, 'mailstack.sqlite');
+  const databaseDir = join(dataDir, 'database');
+  const legacyFilename = join(dataDir, 'mailstack.sqlite');
+  const filename = join(databaseDir, 'mailstack.sqlite');
+  mkdirSync(databaseDir, { recursive: true, mode: 0o700 });
+  const legacyExists = existsSync(legacyFilename);
+  const currentExists = existsSync(filename);
+  if (legacyExists && currentExists) {
+    throw new Error(`Both legacy database "${legacyFilename}" and new database "${filename}" exist. Resolve this manually; neither file was changed.`);
+  }
+  if (legacyExists) {
+    const previous = new Database(legacyFilename);
+    try {
+      const checkpoint = previous.pragma('wal_checkpoint(TRUNCATE)') as Array<{ busy: number }>;
+      if (checkpoint[0]?.busy) throw new Error('The legacy database is busy and could not be safely moved. Stop other service instances and retry.');
+    } finally {
+      previous.close();
+    }
+    renameSync(legacyFilename, filename);
+  }
   const connection = new Database(filename);
   try {
     chmodSync(filename, 0o600);

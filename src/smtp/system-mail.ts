@@ -2,7 +2,7 @@ import nodemailer from 'nodemailer';
 import type { AppConfig } from '../config.js';
 
 export async function sendManagementLoginCode(
-  config: Pick<AppConfig, 'smtp' | 'systemMail'>,
+  config: Pick<AppConfig, 'smtp' | 'systemMail' | 'appTitle'>,
   recipient: string,
   code: string,
   expiresAt: number,
@@ -31,8 +31,8 @@ export async function sendManagementLoginCode(
     const info = await transporter.sendMail({
       from: systemMail.from,
       to: { address: recipient, name: '' },
-      subject: 'Ihr Anmeldecode für Mailstack MCP',
-      text: `Ihr Anmeldecode für Mailstack MCP lautet: ${code}\n\n` +
+      subject: `Ihr Anmeldecode für ${config.appTitle}`,
+      text: `Ihr Anmeldecode für ${config.appTitle} lautet: ${code}\n\n` +
         `Der Code ist einmalig verwendbar und bis ${new Date(expiresAt).toISOString()} (UTC) gültig.\n\n` +
         'Falls Sie diese Anmeldung nicht angefordert haben, ignorieren Sie diese Nachricht.',
       disableFileAccess: true,

@@ -1,4 +1,4 @@
-import { join } from 'node:path';
+import { extname, join } from 'node:path';
 import express, { type Express } from 'express';
 import helmet from 'helmet';
 import type { AppConfig } from '../config.js';
@@ -7,6 +7,9 @@ import { createManagementRouter } from './routes.js';
 export interface WebDependencies {
   staticTokens: string[];
   encryptionKey: Buffer;
+  appTitle: string;
+  appLogoPath?: string;
+  pluginName: string;
   imap: AppConfig['imap'];
   smtp?: AppConfig['smtp'];
   systemMail?: AppConfig['systemMail'];
@@ -22,6 +25,13 @@ export function createManagementApp(dependencies: WebDependencies): Express {
   app.set('views', join(moduleDir, 'views'));
   app.use(helmet());
   app.use('/manage/assets', express.static(join(moduleDir, 'public'), { fallthrough: false, maxAge: '1h' }));
+  if (dependencies.appLogoPath) {
+    app.get('/manage/brand/logo', (_req, res, next) => {
+      res.setHeader('X-Content-Type-Options', 'nosniff');
+      res.type(extname(dependencies.appLogoPath!).slice(1));
+      res.sendFile(dependencies.appLogoPath!, (error) => { if (error) next(error); });
+    });
+  }
   app.use(createManagementRouter(dependencies));
   return app;
 }

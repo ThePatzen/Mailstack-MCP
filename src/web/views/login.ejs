@@ -4,15 +4,15 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="color-scheme" content="light">
-  <title>Anmelden · Mailstack MCP</title>
+  <title>Anmelden · <%= appTitle %></title>
   <link rel="stylesheet" href="/manage/assets/app.css">
   <link rel="stylesheet" href="/manage/assets/typography.css">
 </head>
 <body class="login-page">
   <main class="login-shell">
-    <a class="brand" href="/manage" aria-label="Mailstack MCP Startseite">
-      <span class="brand-mark" aria-hidden="true">M</span>
-      <span>Mailstack MCP</span>
+    <a class="brand" href="/manage" aria-label="<%= appTitle %> Startseite">
+      <% if (appLogoUrl) { %><img class="brand-image" src="<%= appLogoUrl %>" alt=""><% } else { %><span class="brand-mark" aria-hidden="true">M</span><% } %>
+      <span><%= appTitle %></span>
     </a>
     <section class="login-card" aria-labelledby="page-title">
       <h1 id="page-title"><%= challengeId ? 'Anmeldecode eingeben' : 'Postfach verbinden' %></h1>

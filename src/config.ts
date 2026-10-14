@@ -6,6 +6,9 @@ export type TlsMode = 'implicit' | 'starttls';
 export interface AppConfig {
   httpPort: number;
   dataDir: string;
+  appTitle: string;
+  appLogoFilename?: string;
+  pluginName: string;
   staticTokens: string[];
   encryptionKey: Buffer;
   imap: { host: string; port: number; tlsMode: TlsMode };
@@ -77,6 +80,18 @@ export function loadConfig(env: NodeJS.ProcessEnv): AppConfig {
   if (new Set(tokens).size !== tokens.length) throw new Error('MCP_STATIC_TOKENS must not contain duplicate tokens.');
 
   const imapHost = required(env, 'IMAP_HOST');
+  const appTitle = env.APP_TITLE?.trim() || 'Mailstack MCP';
+  const appLogoFilename = env.APP_LOGO_FILENAME?.trim();
+  const pluginName = env.PLUGIN_NAME?.trim() || 'Mailstack MCP';
+  if (appTitle.length > 100 || /[\r\n\0]/.test(appTitle)) {
+    throw new Error('APP_TITLE must not exceed 100 characters or contain line breaks.');
+  }
+  if (appLogoFilename && (!/^[A-Za-z0-9][A-Za-z0-9._-]{0,123}\.(?:png|jpe?g|webp|gif|ico)$/i.test(appLogoFilename) || appLogoFilename.includes('..'))) {
+    throw new Error('APP_LOGO_FILENAME must be a raster image filename (PNG, JPEG, WebP, GIF, or ICO) without a path.');
+  }
+  if (!pluginName || pluginName.length > 100 || /[\r\n\0]/.test(pluginName) || !/[A-Za-z0-9]/.test(pluginName.normalize('NFKD'))) {
+    throw new Error('PLUGIN_NAME must contain 1 to 100 characters and no line breaks.');
+  }
   const smtpHost = env.SMTP_HOST?.trim();
   const systemMailUser = env.SMTP_SYSTEM_USER?.trim();
   const systemMailPassword = env.SMTP_SYSTEM_PASSWORD?.trim();
@@ -95,6 +110,9 @@ export function loadConfig(env: NodeJS.ProcessEnv): AppConfig {
   return {
     httpPort: port(env, 'APP_PORT', 3000),
     dataDir: resolve(env.DATA_DIR?.trim() || '/app/data'),
+    appTitle,
+    ...(appLogoFilename ? { appLogoFilename } : {}),
+    pluginName,
     staticTokens: tokens,
     encryptionKey: decodeEncryptionKey(env),
     imap: {

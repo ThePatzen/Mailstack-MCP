@@ -37,7 +37,7 @@ Die Beispielwerte durch echte Ausgaben ersetzen. `.env` enthält Zugangsschlüss
 
 Setzen Sie mindestens `IMAP_HOST` auf den Hostnamen Ihres Dovecot-Servers. Für den üblichen IMAPS-Port 993 ist `IMAP_PORT=993` und `IMAP_TLS_MODE=implicit` passend. Für einen Dienst, der STARTTLS auf Port 143 erwartet, verwenden Sie `IMAP_PORT=143` und `IMAP_TLS_MODE=starttls`. Der Server prüft TLS-Zertifikate; Klartextverbindungen und das Abschalten der Zertifikatsprüfung sind nicht vorgesehen.
 
-Standardmäßig speichert Compose die Daten im Verzeichnis `./data` und veröffentlicht den HTTP-Port nur auf `127.0.0.1:3000`. Für einen anderen Host-Port setzen Sie `APP_PORT`; für einen anderen Datenpfad setzen Sie `DATA_DIR`. Der Quellordner des Bind-Mounts muss vor dem Start existieren und für den Prozess `node` im Container beschreibbar sein. Im offiziellen Node-Container läuft `node` mit UID 1000. Ein Beispiel für ein neues Datenverzeichnis:
+Standardmäßig bindet Compose das Verzeichnis `./data` als Datenverzeichnis ein und veröffentlicht den HTTP-Port nur auf `127.0.0.1:3000`. Die SQLite-Datei liegt darin unter `database/mailstack.sqlite`; der Ordner `database` wird bei Bedarf angelegt. Für einen anderen Host-Port setzen Sie `APP_PORT`, für einen anderen Datenpfad `DATA_DIR`. Der Quellordner des Bind-Mounts muss vor dem Start existieren und für den Prozess `node` im Container beschreibbar sein. Im offiziellen Node-Container läuft `node` mit UID 1000. Ein Beispiel für ein neues Datenverzeichnis:
 
 ```sh
 mkdir -p ./data
@@ -117,6 +117,9 @@ Die folgenden Einstellungen sind in `.env.example` vorbereitet:
 | `ENCRYPTION_KEY` | Base64-kodierter 32-Byte-Schlüssel | alternativ zu `ENCRYPTION_KEY_FILE` erforderlich |
 | `ENCRYPTION_KEY_FILE` | Pfad zu einer Textdatei mit dem Base64-Schlüssel, im Container erreichbar | alternativ zu `ENCRYPTION_KEY` |
 | `DATA_DIR` | Host-Verzeichnis für persistente SQLite-Daten | `./data` |
+| `APP_TITLE` | Name in Seitentiteln, Kopfbereich und Anmeldecode-E-Mails | `Mailstack MCP` |
+| `APP_LOGO_FILENAME` | Optionaler Bilddateiname in `DATA_DIR/image/`; PNG, JPEG, WebP, GIF oder ICO | nicht gesetzt (M-Symbol) |
+| `PLUGIN_NAME` | Anzeigename des herunterladbaren Plugins; die Paket-ID wird daraus erzeugt | `Mailstack MCP` |
 | `APP_PORT` | Nur auf Loopback veröffentlichter Host-Port | `3000` |
 | `SMTP_HOST` | SMTP-/Submission-Host; aktiviert den Mailversand, wenn gesetzt | nicht gesetzt |
 | `SMTP_PORT` | SMTP-Port | `465` bei `implicit`, `587` bei `starttls` |
@@ -133,6 +136,8 @@ Beim Versand mit `send_email` sucht der Dienst den vom Mailserver mit `\Sent` ma
 ## Schlüssel, Daten und Backups
 
 Das IMAP-Passwort wird nach erfolgreicher Anmeldung mit AES-256-GCM verschlüsselt in SQLite gespeichert. Tokens und Sitzungskennungen werden nur als Hash gespeichert. Der Verschlüsselungsschlüssel liegt getrennt von der Datenbank und wird für jeden Neustart benötigt. Bewahren Sie ihn sicher und unabhängig von den SQLite-Backups auf. Geht er verloren oder wird er ersetzt, können die gespeicherten Passwörter nicht mehr entschlüsselt werden; stellen Sie dann den ursprünglichen Schlüssel aus dem geschützten Backup wieder her.
+
+Die Datenbank liegt in `DATA_DIR/database/mailstack.sqlite`. Beim ersten Start mit dieser Version wird eine vorhandene `DATA_DIR/mailstack.sqlite` automatisch in den neuen Ordner verschoben. Existieren alter und neuer Datenbankpfad gleichzeitig, stoppt der Dienst, ohne eine der Dateien zu überschreiben; sichern und bereinigen Sie die Dateien dann manuell. Für ein eigenes Logo legen Sie eine Rasterbilddatei unter `DATA_DIR/image/` ab und setzen `APP_LOGO_FILENAME` nur auf den Dateinamen, zum Beispiel `logo.png`. Der Dienst liefert ausschließlich diese einzelne konfigurierte Datei aus.
 
 Stoppen Sie den Container vor einem konsistenten Dateikopier-Backup oder verwenden Sie ein SQLite-kompatibles Backup-Verfahren. Sichern Sie Datenbank und Verschlüsselungsschlüssel getrennt und schützen Sie beide Backups. Ein Beispiel für ein gestopptes Backup:
 
@@ -171,6 +176,8 @@ bearer_token_env_var = "MAILSTACK_MCP_TOKEN"
 Setzen Sie `MAILSTACK_MCP_TOKEN` in der Umgebung, in der Codex gestartet wird, auf das zuvor erzeugte User-Token. Speichern Sie das Token nicht direkt in der TOML-Datei. Starten Sie Codex neu, damit die Konfiguration geladen wird. Weitere Informationen stehen in der [Codex MCP-Dokumentation](https://learn.chatgpt.com/docs/extend/mcp?surface=cli) und der [Codex-Konfigurationsreferenz](https://learn.chatgpt.com/docs/config-file/config-reference).
 
 Alternativ bietet die Token-Verwaltung nach der Anmeldung einen Download für ein installierbares Plugin der ChatGPT-Desktop-App und Codex. Das Paket enthält die beim Download verwendete HTTPS-Adresse, aber keine Zugangsdaten. Geben Sie beim Verbinden das User-Token ein und installieren Sie das Paket anhand der enthaltenen `INSTALL.md`-Anleitung über einen persönlichen Marketplace.
+
+`APP_TITLE` passt den Namen der Verwaltungsoberfläche und der Anmeldecode-E-Mails an. Für ein Logo setzen Sie `APP_LOGO_FILENAME` auf einen Dateinamen im Unterordner `image` des Datenverzeichnisses; ohne Logo bleibt das Standardzeichen sichtbar. `PLUGIN_NAME` legt den Anzeigenamen des herunterladbaren Plugins fest. Der Paketordner und die Plugin-ID werden daraus als kleingeschriebener ASCII-Name mit Bindestrichen abgeleitet.
 
 ## Verfügbare MCP-Funktionen
 

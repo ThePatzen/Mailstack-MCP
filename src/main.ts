@@ -1,4 +1,5 @@
 import { access, constants, stat } from 'node:fs/promises';
+import { join } from 'node:path';
 import express from 'express';
 import helmet from 'helmet';
 import { createMcpHandler } from '@modelcontextprotocol/server';
@@ -26,6 +27,16 @@ async function main(): Promise<void> {
   configureImapService(config);
   configureSmtpService(config);
   await verifyDataDirectory(config.dataDir);
+  const appLogoPath = config.appLogoFilename ? join(config.dataDir, 'image', config.appLogoFilename) : undefined;
+  if (appLogoPath) {
+    try {
+      const logo = await stat(appLogoPath);
+      await access(appLogoPath, constants.R_OK);
+      if (!logo.isFile()) throw new Error('not a file');
+    } catch {
+      throw new Error(`Configured APP_LOGO_FILENAME must exist as a readable file in "${join(config.dataDir, 'image')}".`);
+    }
+  }
   initializeDatabase(config.dataDir, config.encryptionKey);
   registerDatabaseCloser(closeStorageDatabase);
 
@@ -50,6 +61,9 @@ async function main(): Promise<void> {
   app.use(createManagementApp({
     staticTokens: config.staticTokens,
     encryptionKey: config.encryptionKey,
+    appTitle: config.appTitle,
+    appLogoPath,
+    pluginName: config.pluginName,
     imap: config.imap,
     smtp: config.smtp,
     systemMail: config.systemMail,
