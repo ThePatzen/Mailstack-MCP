@@ -2,7 +2,7 @@
 
 Mailstack MCP stellt eine Webverwaltung und einen MCP-Endpunkt für ein Dovecot-IMAP-Postfach bereit. Der Dienst läuft als einzelner Docker-Compose-Container. Nginx übernimmt den öffentlichen HTTPS-Zugang.
 
-Die Verwaltung liegt unter `/manage`, der MCP-Endpunkt unter `/mcp`. SMTP-Versand ist optional und wird erst aktiviert, wenn `SMTP_HOST` gesetzt ist.
+Die Verwaltung liegt unter `/manage`, der MCP-Endpunkt unter `/mcp`. Der optionale MCP-Mailversand wird aktiviert, wenn `SMTP_HOST` gesetzt ist. Der optionale E-Mail-Code für die Verwaltungsanmeldung benötigt zusätzlich `SMTP_SYSTEM_USER`, `SMTP_SYSTEM_PASSWORD` und `SMTP_SYSTEM_FROM`.
 
 ## Voraussetzungen
 
@@ -121,9 +121,12 @@ Die folgenden Einstellungen sind in `.env.example` vorbereitet:
 | `SMTP_HOST` | SMTP-/Submission-Host; aktiviert den Mailversand, wenn gesetzt | nicht gesetzt |
 | `SMTP_PORT` | SMTP-Port | `465` bei `implicit`, `587` bei `starttls` |
 | `SMTP_TLS_MODE` | `implicit` oder `starttls`; SMTP-TLS-Modus | `implicit` |
+| `SMTP_SYSTEM_USER` | Benutzername für Verifizierungsmails bei der Verwaltungsanmeldung | nicht gesetzt |
+| `SMTP_SYSTEM_PASSWORD` | Passwort für Verifizierungsmails; wird unverändert als SMTP-Passwort verwendet | nicht gesetzt |
+| `SMTP_SYSTEM_FROM` | Absenderadresse der Verifizierungsmails | nicht gesetzt |
 | `IMAP_SENT_FOLDER` | Optionaler exakter Name des Sent-Ordners | automatische Suche nach `\Sent` |
 
-Wenn SMTP nicht benötigt wird, lassen Sie `SMTP_HOST` leer. Dann werden weder `send_email` noch dessen Berechtigung in der Verwaltung angeboten. Für SMTP mit implizitem TLS ist Port 465 üblich; für STARTTLS Port 587. SMTP verwendet denselben Benutzernamen und dasselbe Passwort wie IMAP. TLS-Zertifikate werden geprüft.
+Wenn SMTP nicht benötigt wird, lassen Sie `SMTP_HOST` leer. Dann werden weder `send_email` noch dessen Berechtigung in der Verwaltung angeboten. Für SMTP mit implizitem TLS ist Port 465 üblich; für STARTTLS Port 587. `send_email` verwendet weiterhin die IMAP-Zugangsdaten des angemeldeten Kontos. Verifizierungsmails für den optionalen E-Mail-Code bei der Verwaltungsanmeldung werden nur versendet, wenn `SMTP_HOST` und alle drei `SMTP_SYSTEM_*`-Werte gesetzt sind. Ohne vollständige System-Mail-Konfiguration bleibt die bestehende Token- und IMAP-Anmeldung verfügbar. TLS-Zertifikate werden geprüft.
 
 Vor dem Versand sucht der Dienst den vom Mailserver mit `\Sent` markierten Ordner. `IMAP_SENT_FOLDER` kann stattdessen einen exakten Ordnernamen angeben, der für die jeweiligen Nutzerkonten verfügbar sein muss. Ohne auflösbaren Sent-Ordner wird nicht gesendet.
 
