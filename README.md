@@ -2,7 +2,7 @@
 
 Mailstack MCP stellt eine Webverwaltung und einen MCP-Endpunkt für ein Dovecot-IMAP-Postfach bereit. Der Dienst läuft als einzelner Docker-Compose-Container. Nginx übernimmt den öffentlichen HTTPS-Zugang.
 
-Die Verwaltung liegt unter `/manage`, der MCP-Endpunkt unter `/mcp`. SMTP-Versand ist optional und wird erst aktiviert, wenn `SMTP_HOST` gesetzt ist.
+Die Verwaltung liegt unter `/manage`, der MCP-Endpunkt unter `/mcp`. Der optionale MCP-Mailversand wird aktiviert, wenn `SMTP_HOST` gesetzt ist. Sind `SMTP_HOST` und alle drei `SMTP_SYSTEM_*`-Werte konfiguriert, ist E-Mail-Code die vorausgewählte Anmeldemethode; die Anmeldung mit Verwaltungstoken bleibt auswählbar.
 
 ## Voraussetzungen
 
@@ -121,11 +121,14 @@ Die folgenden Einstellungen sind in `.env.example` vorbereitet:
 | `SMTP_HOST` | SMTP-/Submission-Host; aktiviert den Mailversand, wenn gesetzt | nicht gesetzt |
 | `SMTP_PORT` | SMTP-Port | `465` bei `implicit`, `587` bei `starttls` |
 | `SMTP_TLS_MODE` | `implicit` oder `starttls`; SMTP-TLS-Modus | `implicit` |
+| `SMTP_SYSTEM_USER` | Benutzername für Verifizierungsmails bei der Verwaltungsanmeldung | nicht gesetzt |
+| `SMTP_SYSTEM_PASSWORD` | Passwort für Verifizierungsmails; umgebender Leerraum wird entfernt | nicht gesetzt |
+| `SMTP_SYSTEM_FROM` | Absenderadresse der Verifizierungsmails | nicht gesetzt |
 | `IMAP_SENT_FOLDER` | Optionaler exakter Name des Sent-Ordners | automatische Suche nach `\Sent` |
 
-Wenn SMTP nicht benötigt wird, lassen Sie `SMTP_HOST` leer. Dann werden weder `send_email` noch dessen Berechtigung in der Verwaltung angeboten. Für SMTP mit implizitem TLS ist Port 465 üblich; für STARTTLS Port 587. SMTP verwendet denselben Benutzernamen und dasselbe Passwort wie IMAP. TLS-Zertifikate werden geprüft.
+Wenn SMTP nicht benötigt wird, lassen Sie `SMTP_HOST` leer. Dann werden weder `send_email` noch dessen Berechtigung in der Verwaltung angeboten. Für SMTP mit implizitem TLS ist Port 465 üblich; für STARTTLS Port 587. `send_email` verwendet weiterhin die IMAP-Zugangsdaten des angemeldeten Kontos. Verifizierungsmails für den E-Mail-Code bei der Verwaltungsanmeldung werden nur versendet, wenn `SMTP_HOST` und alle drei `SMTP_SYSTEM_*`-Werte gesetzt sind. `SMTP_SYSTEM_USER`, `SMTP_SYSTEM_PASSWORD` und `SMTP_SYSTEM_FROM` dienen ausschließlich diesen Verifizierungsmails. Unvollständige System-Mail-Werte verhindern den Serverstart nicht und lassen die Anmeldung mit Verwaltungstoken verfügbar. TLS-Zertifikate werden geprüft.
 
-Vor dem Versand sucht der Dienst den vom Mailserver mit `\Sent` markierten Ordner. `IMAP_SENT_FOLDER` kann stattdessen einen exakten Ordnernamen angeben, der für die jeweiligen Nutzerkonten verfügbar sein muss. Ohne auflösbaren Sent-Ordner wird nicht gesendet.
+Beim Versand mit `send_email` sucht der Dienst den vom Mailserver mit `\Sent` markierten Ordner. `IMAP_SENT_FOLDER` kann stattdessen einen exakten Ordnernamen angeben, der für die jeweiligen Nutzerkonten verfügbar sein muss. Ohne auflösbaren Sent-Ordner wird `send_email` nicht ausgeführt. Diese Suche und Archivierung betreffen ausschließlich `send_email`; Verifizierungsmails für die Verwaltungsanmeldung werden nicht im Sent-Ordner abgelegt.
 
 ## Schlüssel, Daten und Backups
 
@@ -143,12 +146,13 @@ Der Beispielbefehl setzt `DATA_DIR=./data` voraus. Wenn Sie in `.env` einen ande
 
 ## Anmeldung und User-Token
 
-Öffnen Sie `https://mail-mcp.example.net/manage`. Für die Anmeldung werden beide Zugangsdaten benötigt:
+Öffnen Sie `https://mail-mcp.example.net/manage`. Wenn SMTP und alle `SMTP_SYSTEM_*`-Werte vollständig gesetzt sind, ist **E-Mail-Code** vorausgewählt. Sie können stattdessen **Verwaltungstoken** auswählen. Ohne vollständige System-Mail-Konfiguration steht nur der Verwaltungstoken-Weg zur Verfügung.
 
-1. Ein statisches Verwaltungstoken aus `MCP_STATIC_TOKENS`.
-2. Der Benutzername und das Passwort des IMAP-Postfachs.
+Bei E-Mail-Code geben Sie den IMAP-Benutzernamen und das IMAP-Passwort ein. Der Dienst prüft zuerst die Zugangsdaten beim IMAP-Server und sendet dann einen einmalig verwendbaren sechsstelligen Code an die E-Mail-Adresse dieses Benutzernamens. Der Code ist zehn Minuten gültig; nach fünf falschen Eingaben muss die Anmeldung neu begonnen werden. Für einen neuen Code starten Sie den Vorgang erneut und geben die IMAP-Zugangsdaten noch einmal ein; dadurch wird der vorherige Code ungültig. Diese Anmeldemethode setzt voraus, dass der IMAP-Benutzername selbst eine erreichbare E-Mail-Adresse ist. Verwenden Sie bei kurzen IMAP-Benutzernamen ohne zustellbare Adresse die Anmeldung mit Verwaltungstoken.
 
-Der Dienst prüft das Postfach beim IMAP-Server und speichert nach erfolgreicher Anmeldung das Passwort verschlüsselt. Die statischen Tokens autorisieren ausschließlich den Zugang zur Verwaltung; sie sind keine MCP-Bearer-Tokens und gewähren für sich allein keinen Zugriff auf ein Postfach.
+Bei Verwaltungstoken geben Sie ein statisches Verwaltungstoken aus `MCP_STATIC_TOKENS` sowie den IMAP-Benutzernamen und das IMAP-Passwort ein. Auch dieser Weg prüft das Postfach beim IMAP-Server. Nach erfolgreicher Anmeldung wird das Passwort verschlüsselt gespeichert. Die statischen Tokens autorisieren ausschließlich den Zugang zur Verwaltung; sie sind keine MCP-Bearer-Tokens und gewähren für sich allein keinen Zugriff auf ein Postfach.
+
+Anmeldeversuche werden pro IP-Adresse und normalisiertem Benutzernamen begrenzt: höchstens 30 Versuche je IP-Adresse und 8 je Konto innerhalb von 15 Minuten. Die Zähler liegen im Arbeitsspeicher des Prozesses und werden bei einem Neustart zurückgesetzt; bei mehreren Dienstinstanzen werden sie nicht gemeinsam genutzt. Die Anwendung vertraut genau einem Reverse-Proxy-Hop. Konfigurieren Sie den Proxy so, dass die tatsächliche Client-IP am Ende von `X-Forwarded-For` steht (wie im Nginx-Beispiel), und verlassen Sie sich nicht auf einen vom Client gelieferten Wert. Abgelaufene E-Mail-Code-Anfragen werden beim Erstellen einer neuen Anfrage opportunistisch aus SQLite entfernt.
 
 Nach der Anmeldung erstellen Sie unter **Zugriffstoken** ein benanntes User-Token. Der vollständige Wert wird nur einmal angezeigt. Kopieren Sie ihn sofort in die MCP-Client-Konfiguration und speichern Sie ihn wie ein Passwort. Verlorene Werte können nicht erneut angezeigt werden; erstellen Sie in diesem Fall ein neues Token und widerrufen Sie das alte. Für jedes Token können Sie einzelne Funktionen erlauben oder sperren. Ein Widerruf macht das Token unbrauchbar. Widerrufene Einträge lassen sich anschließend dauerhaft löschen.
 

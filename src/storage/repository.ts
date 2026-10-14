@@ -1,6 +1,6 @@
-import { randomUUID } from 'node:crypto';
+import { randomUUID, timingSafeEqual } from 'node:crypto';
 import type { EncryptedSecret } from '../security/crypto.js';
-import { generateToken, hashToken, tokenDigestMatches } from '../security/tokens.js';
+import { generateToken, hashEmailLoginValue, hashToken, tokenDigestMatches } from '../security/tokens.js';
 import { getDatabase } from './database.js';
 
 export interface AccountRecord {
@@ -137,4 +137,95 @@ export function findSession(sessionId: string): { accountId: string; expiresAt: 
 
 export function deleteSession(sessionId: string): void {
   getDatabase().prepare('DELETE FROM sessions WHERE session_hash = ?').run(hashToken(sessionId));
+}
+
+interface EmailLoginChallengeRow {
+  challenge_id_digest: string;
+  username: string;
+  code_hmac: string;
+  password_ciphertext: string;
+  password_nonce: string;
+  password_tag: string;
+  expires_at: number;
+  attempts: number;
+}
+
+const EMAIL_LOGIN_MAX_ATTEMPTS = 5;
+
+function emailLoginDigestMatches(candidateDigest: string, storedDigest: string): boolean {
+  const candidate = Buffer.from(candidateDigest, 'hex');
+  const stored = Buffer.from(storedDigest, 'hex');
+  return stored.length === candidate.length && timingSafeEqual(candidate, stored);
+}
+
+export function createEmailLoginChallenge(input: {
+  username: string;
+  encryptedPassword: EncryptedSecret;
+  code: string;
+  expiresAt: number;
+  encryptionKey: Buffer;
+}): string {
+  if (typeof input.code !== 'string' || !/^[0-9]{6}$/.test(input.code)) throw new Error('Email login code must contain exactly six digits.');
+  if (!input.username || input.username.length > 1024 || /[\r\n\0]/.test(input.username)) throw new Error('Invalid account username.');
+  const now = Date.now();
+  if (!Number.isSafeInteger(input.expiresAt) || input.expiresAt <= now) throw new Error('Email login challenge expiration must be in the future.');
+  const db = getDatabase();
+  return db.transaction(() => {
+    db.prepare('DELETE FROM email_login_challenges WHERE expires_at <= ?').run(now);
+    db.prepare('DELETE FROM email_login_challenges WHERE normalized_username = ?').run(input.username.toLocaleLowerCase('en-US'));
+    const challengeId = generateToken();
+    db.prepare(`INSERT INTO email_login_challenges (
+      challenge_id_digest, normalized_username, username, code_hmac,
+      password_ciphertext, password_nonce, password_tag, expires_at, attempts
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0)`).run(
+      hashEmailLoginValue(challengeId, 'email-login-challenge-id', input.encryptionKey),
+      input.username.toLocaleLowerCase('en-US'), input.username,
+      hashEmailLoginValue(input.code, 'email-login-code', input.encryptionKey),
+      input.encryptedPassword.ciphertext, input.encryptedPassword.nonce, input.encryptedPassword.tag,
+      input.expiresAt,
+    );
+    return challengeId;
+  }).immediate();
+}
+
+export function consumeEmailLoginChallenge(input: {
+  challengeId: string;
+  code: string;
+  now: number;
+  encryptionKey: Buffer;
+}): { username: string; encryptedPassword: EncryptedSecret } | null {
+  if (!/^[A-Za-z0-9_-]{43}$/.test(input.challengeId) || !Number.isSafeInteger(input.now)) return null;
+  const challengeDigest = hashEmailLoginValue(input.challengeId, 'email-login-challenge-id', input.encryptionKey);
+  const db = getDatabase();
+  // Acquire the write lock before reading so separate connections cannot consume or increment the same row concurrently.
+  return db.transaction(() => {
+    const row = db.prepare('SELECT * FROM email_login_challenges WHERE challenge_id_digest = ?').get(challengeDigest) as EmailLoginChallengeRow | undefined;
+    if (!row || !emailLoginDigestMatches(challengeDigest, row.challenge_id_digest)) return null;
+    if (row.expires_at <= input.now || row.attempts >= EMAIL_LOGIN_MAX_ATTEMPTS) {
+      db.prepare('DELETE FROM email_login_challenges WHERE challenge_id_digest = ?').run(challengeDigest);
+      return null;
+    }
+    // Malformed submissions consume an attempt too, but are never hashed or matched against the stored code.
+    const codeMatches = typeof input.code === 'string' && /^[0-9]{6}$/.test(input.code)
+      && emailLoginDigestMatches(hashEmailLoginValue(input.code, 'email-login-code', input.encryptionKey), row.code_hmac);
+    if (!codeMatches) {
+      if (row.attempts + 1 >= EMAIL_LOGIN_MAX_ATTEMPTS) {
+        db.prepare('DELETE FROM email_login_challenges WHERE challenge_id_digest = ?').run(challengeDigest);
+      } else {
+        db.prepare('UPDATE email_login_challenges SET attempts = attempts + 1 WHERE challenge_id_digest = ?').run(challengeDigest);
+      }
+      return null;
+    }
+    db.prepare('DELETE FROM email_login_challenges WHERE challenge_id_digest = ?').run(challengeDigest);
+    return {
+      username: row.username,
+      encryptedPassword: { ciphertext: row.password_ciphertext, nonce: row.password_nonce, tag: row.password_tag },
+    };
+  }).immediate();
+}
+
+export function invalidateEmailLoginChallenge(challengeId: string, encryptionKey: Buffer): void {
+  getDatabase().prepare('DELETE FROM email_login_challenges WHERE challenge_id_digest = ?').run(
+    hashEmailLoginValue(challengeId, 'email-login-challenge-id', encryptionKey),
+  );
 }
