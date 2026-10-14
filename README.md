@@ -122,7 +122,7 @@ Die folgenden Einstellungen sind in `.env.example` vorbereitet:
 | `SMTP_PORT` | SMTP-Port | `465` bei `implicit`, `587` bei `starttls` |
 | `SMTP_TLS_MODE` | `implicit` oder `starttls`; SMTP-TLS-Modus | `implicit` |
 | `SMTP_SYSTEM_USER` | Benutzername für Verifizierungsmails bei der Verwaltungsanmeldung | nicht gesetzt |
-| `SMTP_SYSTEM_PASSWORD` | Passwort für Verifizierungsmails; wird unverändert als SMTP-Passwort verwendet | nicht gesetzt |
+| `SMTP_SYSTEM_PASSWORD` | Passwort für Verifizierungsmails; umgebender Leerraum wird entfernt | nicht gesetzt |
 | `SMTP_SYSTEM_FROM` | Absenderadresse der Verifizierungsmails | nicht gesetzt |
 | `IMAP_SENT_FOLDER` | Optionaler exakter Name des Sent-Ordners | automatische Suche nach `\Sent` |
 

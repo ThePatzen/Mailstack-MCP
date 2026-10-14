@@ -79,15 +79,14 @@ export function loadConfig(env: NodeJS.ProcessEnv): AppConfig {
   const imapHost = required(env, 'IMAP_HOST');
   const smtpHost = env.SMTP_HOST?.trim();
   const systemMailUser = env.SMTP_SYSTEM_USER?.trim();
-  const systemMailPassword = env.SMTP_SYSTEM_PASSWORD;
-  const hasSystemMailPassword = Boolean(systemMailPassword?.trim());
+  const systemMailPassword = env.SMTP_SYSTEM_PASSWORD?.trim();
   const rawSystemMailFrom = env.SMTP_SYSTEM_FROM;
   if (rawSystemMailFrom && /[\r\n\0]/.test(rawSystemMailFrom)) {
     throw new Error('SMTP_SYSTEM_FROM must not contain CR, LF, or NUL characters.');
   }
   const systemMailFrom = rawSystemMailFrom?.trim();
-  const systemMail = systemMailUser && hasSystemMailPassword && systemMailFrom
-    ? { user: systemMailUser, password: systemMailPassword!, from: systemMailFrom }
+  const systemMail = systemMailUser && systemMailPassword && systemMailFrom
+    ? { user: systemMailUser, password: systemMailPassword, from: systemMailFrom }
     : undefined;
   const sentFolder = env.IMAP_SENT_FOLDER?.trim();
   const imapTlsMode = tlsMode(env, 'IMAP_TLS_MODE', 'implicit');
