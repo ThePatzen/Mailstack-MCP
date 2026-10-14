@@ -128,7 +128,7 @@ Die folgenden Einstellungen sind in `.env.example` vorbereitet:
 
 Wenn SMTP nicht benötigt wird, lassen Sie `SMTP_HOST` leer. Dann werden weder `send_email` noch dessen Berechtigung in der Verwaltung angeboten. Für SMTP mit implizitem TLS ist Port 465 üblich; für STARTTLS Port 587. `send_email` verwendet weiterhin die IMAP-Zugangsdaten des angemeldeten Kontos. Verifizierungsmails für den E-Mail-Code bei der Verwaltungsanmeldung werden nur versendet, wenn `SMTP_HOST` und alle drei `SMTP_SYSTEM_*`-Werte gesetzt sind. `SMTP_SYSTEM_USER`, `SMTP_SYSTEM_PASSWORD` und `SMTP_SYSTEM_FROM` dienen ausschließlich diesen Verifizierungsmails. Unvollständige System-Mail-Werte verhindern den Serverstart nicht und lassen die Anmeldung mit Verwaltungstoken verfügbar. TLS-Zertifikate werden geprüft.
 
-Vor dem Versand sucht der Dienst den vom Mailserver mit `\Sent` markierten Ordner. `IMAP_SENT_FOLDER` kann stattdessen einen exakten Ordnernamen angeben, der für die jeweiligen Nutzerkonten verfügbar sein muss. Ohne auflösbaren Sent-Ordner wird nicht gesendet.
+Beim Versand mit `send_email` sucht der Dienst den vom Mailserver mit `\Sent` markierten Ordner. `IMAP_SENT_FOLDER` kann stattdessen einen exakten Ordnernamen angeben, der für die jeweiligen Nutzerkonten verfügbar sein muss. Ohne auflösbaren Sent-Ordner wird `send_email` nicht ausgeführt. Diese Suche und Archivierung betreffen ausschließlich `send_email`; Verifizierungsmails für die Verwaltungsanmeldung werden nicht im Sent-Ordner abgelegt.
 
 ## Schlüssel, Daten und Backups
 
