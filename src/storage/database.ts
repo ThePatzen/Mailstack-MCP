@@ -16,11 +16,16 @@ export function initializeDatabase(dataDir: string, encryptionKey: Buffer): Data
     connection.pragma('busy_timeout = 5000');
     connection.exec('CREATE TABLE IF NOT EXISTS schema_migrations (version INTEGER PRIMARY KEY, applied_at INTEGER NOT NULL)');
     const version = (connection.prepare('SELECT MAX(version) AS version FROM schema_migrations').get() as { version: number | null }).version ?? 0;
-    if (version > 1) throw new Error('Database schema is newer than this service supports.');
-    if (version < 1) {
+    if (version > 2) throw new Error('Database schema is newer than this service supports.');
+    const migrations = [
+      { version: 1, filename: '001-initial.sql' },
+      { version: 2, filename: '002-email-login-challenges.sql' },
+    ];
+    for (const migration of migrations) {
+      if (version >= migration.version) continue;
       connection.transaction(() => {
-        connection.exec(readFileSync(join(__dirname, 'migrations', '001-initial.sql'), 'utf8'));
-        connection.prepare('INSERT INTO schema_migrations (version, applied_at) VALUES (?, ?)').run(1, Date.now());
+        connection.exec(readFileSync(join(__dirname, 'migrations', migration.filename), 'utf8'));
+        connection.prepare('INSERT INTO schema_migrations (version, applied_at) VALUES (?, ?)').run(migration.version, Date.now());
       })();
     }
     const check = connection.prepare('SELECT value FROM deployment_metadata WHERE name = ?').get('encryption_key_check') as { value: string } | undefined;
