@@ -116,17 +116,17 @@ description: Erklärt die Verbindung mit dem persönlichen Mailstack-MCP-Server.
 
 # Mailstack MCP verbinden
 
-Der Server-Endpunkt dieses Plugins ist `${mcpUrl}`.
+Der Server-Endpunkt dieses Plugins ist \`${mcpUrl}\`.
 
 Bei der Verbindung fragt Codex oder die ChatGPT-Desktop-App nach einem API-Key. Fügen Sie dort ein persönliches **User-Token** aus der Verwaltungsoberfläche ein. Der Server verwendet dieses Token als Bearer-Token und beschränkt den Zugriff auf die dafür freigegebenen Funktionen.
 
 Geben Sie das Token niemals in den Chat ein und speichern Sie es nicht in Plugin-Dateien. Wenn Sie den Wert verloren haben, erstellen Sie in der Verwaltung ein neues Token und widerrufen Sie das alte.
 
-Das statische Verwaltungstoken wird ausschließlich für die Anmeldung auf `${origin}/manage` benötigt. Es funktioniert nicht als MCP-Zugang.
+Das statische Verwaltungstoken wird ausschließlich für die Anmeldung auf \`${origin}/manage\` benötigt. Es funktioniert nicht als MCP-Zugang.
 `;
   const installGuide = `# Mailstack MCP Plugin installieren
 
-Dieses Paket enthält die Verbindung zu `${mcpUrl}`. Es enthält keine Zugangsdaten.
+Dieses Paket enthält die Verbindung zu \`${mcpUrl}\`. Es enthält keine Zugangsdaten.
 
 ## Codex und ChatGPT-Desktop-App
 
