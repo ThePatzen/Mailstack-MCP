@@ -24,6 +24,8 @@ const content = z.object({
 const changed = z.object({ success: z.boolean() });
 
 export function registerMessageTools(server: McpServer, principal: McpPrincipal): void {
+  // Per-token registration keeps tools/list useful; toolCall remains the
+  // enforcement point for every individual message operation.
   if (principal.enabledTools.includes('list_messages')) {
     server.registerTool('list_messages', {
       description: 'List recent messages in a mailbox, newest first. Results are paged by UID.',

@@ -33,6 +33,8 @@ async function main(): Promise<void> {
   app.disable('x-powered-by');
   app.use(helmet());
   app.get('/health', (_req, res) => res.status(200).json({ status: 'ok' }));
+  // The auth middleware populates the verified principal before the SDK asks
+  // for a server, so registrations are scoped to this request's token.
   const mcpHandler = createMcpHandler(({ authInfo }) => {
     const principal = principalFromAuthInfo(authInfo);
     if (!principal) throw new Error('MCP authentication context is unavailable.');

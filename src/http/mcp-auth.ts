@@ -29,6 +29,8 @@ function bearerToken(header: string | undefined): string | null {
 }
 
 export function authenticateMcpRequest(req: Request, res: Response, next: NextFunction): void {
+  // Resolve the bearer token at the HTTP boundary; tool handlers receive its
+  // account and permissions as a principal, never as caller-supplied input.
   const token = bearerToken(req.get('authorization'));
   const authenticated = token ? findUserToken(token) : null;
   if (!token || !authenticated) {
@@ -43,8 +45,9 @@ export function authenticateMcpRequest(req: Request, res: Response, next: NextFu
     username: authenticated.username,
     enabledTools: authenticated.enabledTools,
   };
-  // The SDK's AuthInfo carries the verified identity. The principal stays in
-  // memory in its opaque `extra` field; the token is never persisted or logged.
+  // Keep the verified mailbox identity in the SDK context for this request.
+  // The token itself is only passed through for SDK authentication; services
+  // use the principal and never persist or log the bearer value.
   (req as AuthenticatedRequest).auth = {
     token,
     clientId: principal.username,

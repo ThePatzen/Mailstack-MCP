@@ -25,6 +25,11 @@ Mailstack MCP is a self-hosted MCP service for a Dovecot IMAP mailbox, with a we
 - `docs/superpowers/plans/` records implementation plans; plans can describe work that is not yet implemented.
 - Repository-specific workflow guidance is in `.agents/skills/`.
 
+## Skill routing
+
+- For repository orientation or changes that cross subsystems, read `$repository-workflow`.
+- Before adding or changing an MCP tool, its input/output schemas, registration, or authorization, read `$mcp-tools`.
+
 ## Working rules
 
 - Follow the current implementation and agreed specifications. If they disagree, identify the mismatch before changing behavior; a design or plan alone does not prove a feature is implemented.
@@ -34,6 +39,7 @@ Mailstack MCP is a self-hosted MCP service for a Dovecot IMAP mailbox, with a we
 - SMTP acceptance followed by Sent-folder archival failure is a partial success. Report it without automatically sending the message again.
 - Keep account, token, permission, and session operations scoped to the authenticated account. Persist schema changes as versioned SQLite migrations.
 - Make focused changes in the existing structure. Update the relevant documentation when configuration, externally visible behavior, or operations change.
+- Write concise code comments in plain language when they clarify a security boundary, ordering requirement, or non-obvious failure case; avoid comments that merely restate the next line.
 
 ## Available commands
 

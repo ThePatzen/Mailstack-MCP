@@ -28,6 +28,7 @@ const sendEmailOutput = z.object({
 });
 
 export function registerSendEmailTool(server: McpServer, principal: McpPrincipal): void {
+  // SMTP is deployment-optional, and this capability is also per-token.
   if (!principal.enabledTools.includes('send_email')) return;
   server.registerTool('send_email', {
     description: 'Send an email using the mailbox account and save the same message to Sent.',

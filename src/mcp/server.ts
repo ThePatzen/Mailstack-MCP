@@ -8,6 +8,8 @@ export function buildMcpServer(principal: McpPrincipal, smtpConfigured = false):
   const server = new McpServer({ name: 'mailstack-mcp', version: '0.1.0' }, {
     capabilities: { tools: { listChanged: false } },
   });
+  // Register only this token's allowed tools; toolCall also rechecks each
+  // permission when a handler runs.
   registerMailboxTools(server, principal);
   registerMessageTools(server, principal);
   if (smtpConfigured) registerSendEmailTool(server, principal);

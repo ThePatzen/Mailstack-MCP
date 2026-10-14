@@ -11,6 +11,8 @@ const mailboxOutput = z.object({
 });
 
 export function registerMailboxTools(server: McpServer, principal: McpPrincipal): void {
+  // Expose only mailbox operations allowed by this token. toolCall repeats the
+  // check when each handler is invoked.
   if (principal.enabledTools.includes('list_mailboxes')) {
     server.registerTool('list_mailboxes', {
       description: 'List the mailboxes available to the authenticated account.',
