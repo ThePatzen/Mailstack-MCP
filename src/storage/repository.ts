@@ -194,10 +194,8 @@ export function consumeEmailLoginChallenge(input: {
   now: number;
   encryptionKey: Buffer;
 }): { username: string; encryptedPassword: EncryptedSecret } | null {
-  if (typeof input.code !== 'string' || !/^[0-9]{6}$/.test(input.code)) return null;
   if (!/^[A-Za-z0-9_-]{43}$/.test(input.challengeId) || !Number.isSafeInteger(input.now)) return null;
   const challengeDigest = hashEmailLoginValue(input.challengeId, 'email-login-challenge-id', input.encryptionKey);
-  const codeDigest = hashEmailLoginValue(input.code, 'email-login-code', input.encryptionKey);
   const db = getDatabase();
   // Acquire the write lock before reading so separate connections cannot consume or increment the same row concurrently.
   return db.transaction(() => {
@@ -207,7 +205,10 @@ export function consumeEmailLoginChallenge(input: {
       db.prepare('DELETE FROM email_login_challenges WHERE challenge_id_digest = ?').run(challengeDigest);
       return null;
     }
-    if (!emailLoginDigestMatches(codeDigest, row.code_hmac)) {
+    // Malformed submissions consume an attempt too, but are never hashed or matched against the stored code.
+    const codeMatches = typeof input.code === 'string' && /^[0-9]{6}$/.test(input.code)
+      && emailLoginDigestMatches(hashEmailLoginValue(input.code, 'email-login-code', input.encryptionKey), row.code_hmac);
+    if (!codeMatches) {
       if (row.attempts + 1 >= EMAIL_LOGIN_MAX_ATTEMPTS) {
         db.prepare('DELETE FROM email_login_challenges WHERE challenge_id_digest = ?').run(challengeDigest);
       } else {
