@@ -34,5 +34,7 @@ export function registerSendEmailTool(server: McpServer, principal: McpPrincipal
     inputSchema: sendEmailInput,
     outputSchema: sendEmailOutput,
     annotations: { destructiveHint: false },
-  }, async (input) => toolCall(principal, 'send_email', () => sendAndArchive(principal.accountId, input)));
+  }, async (input) => toolCall(principal, 'send_email', async () => ({
+    ...await sendAndArchive(principal.accountId, input),
+  })));
 }

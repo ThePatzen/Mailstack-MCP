@@ -35,7 +35,7 @@ export interface SendEmailResult {
 interface CompiledMessage { build(): Promise<Buffer> }
 interface MailComposerInstance { compile(): CompiledMessage }
 type MailComposerConstructor = new (options: Record<string, unknown>) => MailComposerInstance;
-const require = createRequire(import.meta.url);
+const require = createRequire(__filename);
 const MailComposer = require('nodemailer/lib/mail-composer') as MailComposerConstructor;
 
 let serviceConfig: AppConfig | undefined;
@@ -196,7 +196,7 @@ export async function sendAndArchive(accountId: string, input: SendEmailInput): 
     // SMTP has accepted the message. From here on, failures are partial success;
     // never attempt a second SMTP transaction as an archival recovery strategy.
     try {
-      await client.append(sentFolder, rawMessage, { flags: ['\\Seen'] });
+      await client.append(sentFolder, rawMessage, ['\\Seen']);
       return { messageId, sent: true, archived: true, rejectedRecipients };
     } catch {
       return {

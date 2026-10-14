@@ -2,7 +2,7 @@
 
 ## Purpose and stack
 
-Mailstack MCP is a self-hosted MCP service for a Dovecot IMAP mailbox, with a web interface for account and token management and optional SMTP sending. It runs as one Node.js 20+ TypeScript service in Docker Compose. Express serves the management UI and Streamable HTTP MCP endpoint; SQLite stores accounts, tokens, permissions, and sessions.
+Mailstack MCP is a self-hosted MCP service for a Dovecot IMAP mailbox, with a web interface for account and token management, optional email-code management sign-in, and optional SMTP sending. It runs as one Node.js 20+ TypeScript service in Docker Compose. Express serves the management UI and Streamable HTTP MCP endpoint; SQLite stores accounts, tokens, permissions, and sessions.
 
 ## Where to look
 
@@ -13,6 +13,7 @@ Mailstack MCP is a self-hosted MCP service for a Dovecot IMAP mailbox, with a we
 | Management UI, routes, sessions, CSRF | `src/web/app.ts`, `src/web/routes.ts`, `src/web/auth.ts`, `src/web/sessions.ts`, `src/web/csrf.ts`, `src/web/views/` |
 | IMAP operations and message parsing | `src/imap/` |
 | Optional SMTP sending and Sent archival | `src/smtp/sender.ts` |
+| System verification email for management sign-in | `src/smtp/system-mail.ts`, `src/web/routes.ts` |
 | Encryption, token generation, persistence | `src/security/`, `src/storage/`, `src/storage/migrations/` |
 | Container and local deployment | `Dockerfile`, `compose.yaml`, `README.md` |
 | Product purpose and UI design | `PRODUCT.md`, `DESIGN.md` |

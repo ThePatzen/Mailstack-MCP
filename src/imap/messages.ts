@@ -63,7 +63,9 @@ async function pageMessages(client: ImapFlow, mailbox: string, query: Record<str
   return locked(client, mailbox, async () => {
     // Walk newest-to-oldest in fixed UID windows. The server returns at most
     // one window of UIDs per SEARCH, even when the mailbox contains millions.
-    let newestUid = (client.mailbox?.uidNext ?? 1) - 1;
+    const selectedMailbox = client.mailbox;
+    if (!selectedMailbox) throw new ImapServiceError('INTERNAL');
+    let newestUid = (selectedMailbox.uidNext ?? 1) - 1;
     if (page.beforeUid !== undefined) newestUid = Math.min(newestUid, page.beforeUid - 1);
     const uids: number[] = [];
     let windowsScanned = 0;
@@ -96,7 +98,7 @@ export async function readMessage(accountId: string, mailbox: string, uid: numbe
   validMailbox(mailbox); validUid(uid);
   return safely(() => withImapClient(accountId, async (client) => locked(client, mailbox, async () => {
     const message = await client.fetchOne(String(uid), { uid: true, source: { start: 0, maxLength: MAX_MESSAGE_BYTES }, size: true, bodyStructure: true }, { uid: true });
-    if (!message?.source) throw new ImapServiceError('NOT_FOUND');
+    if (!message || !message.source) throw new ImapServiceError('NOT_FOUND');
     const parsed = await parseMessage(uid, message.source, attachmentParts(message.bodyStructure));
     if ((message.size ?? 0) > MAX_MESSAGE_BYTES) parsed.truncated = true;
     return parsed;
