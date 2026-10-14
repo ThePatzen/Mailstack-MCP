@@ -204,3 +204,37 @@ docker compose down
 ```
 
 `docker compose down` entfernt den Container, nicht den über `DATA_DIR` eingebundenen Datenordner. Entfernen Sie diesen Ordner nur, wenn Sie die gespeicherten Konten und Tokens bewusst löschen möchten.
+
+## Versionen und Docker Hub
+
+Die Anwendungs-Version steht in `package.json` und `package-lock.json`. Verwenden Sie Versionsnummern nach `MAJOR.MINOR.PATCH`, zum Beispiel `0.1.1` für eine Fehlerkorrektur oder `0.2.0` für eine neue Funktion. Vor `1.0.0` kennzeichnet die Versionsnummer noch den Entwicklungsstand.
+
+Der GitHub-Actions-Workflow `.github/workflows/publish-dockerhub.yml` veröffentlicht bei jedem Tag im Format `vX.Y.Z` automatisch ein Image auf Docker Hub. Er prüft, ob die Tag-Version mit `package.json` übereinstimmt, und veröffentlicht beide Tags `X.Y.Z` und `latest`.
+
+Richten Sie einmalig Folgendes ein:
+
+1. Das Docker-Hub-Repository [`thepatzen/mailstack-mcp`](https://hub.docker.com/repository/docker/thepatzen/mailstack-mcp) ist das Ziel der Veröffentlichung.
+2. Erstellen Sie in Docker Hub einen Access Token mit Schreibrechten.
+3. Legen Sie im GitHub-Repository unter **Settings → Secrets and variables → Actions** das Secret `DOCKERHUB_TOKEN` mit diesem Access Token an.
+
+Für ein Release committen Sie zuerst die Änderungen, die in die Version gehören. Aktualisieren Sie danach Version und Lockfile mit einem der folgenden Befehle:
+
+```sh
+npm version patch   # Fehlerkorrektur, z. B. 0.1.0 → 0.1.1
+npm version minor   # neue Funktion, z. B. 0.1.0 → 0.2.0
+npm version major   # inkompatible Änderung, z. B. 0.1.0 → 1.0.0
+```
+
+`npm version` erstellt einen Commit und den passenden Git-Tag, zum Beispiel `v0.1.1`. Pushen Sie Commit und Tag:
+
+```sh
+git push origin main --follow-tags
+```
+
+Der Workflow baut und veröffentlicht anschließend `thepatzen/mailstack-mcp:0.1.1` und `thepatzen/mailstack-mcp:latest`. Für einen produktiven Compose-Einsatz ersetzen Sie in `compose.yaml` `build: .` durch das passende, versionierte Image, zum Beispiel:
+
+```yaml
+image: thepatzen/mailstack-mcp:0.1.1
+```
+
+Die Image-Tags sind öffentliche Artefakte; `.env` und das persistente Datenverzeichnis bleiben separat auf Ihrem Server.
