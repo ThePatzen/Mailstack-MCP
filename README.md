@@ -155,6 +155,8 @@ Der MCP-Server stellt einen Streamable-HTTP-Endpunkt unter `https://mail-mcp.exa
 
 ### Codex konfigurieren
 
+Für die native Plugin-Installation mit OAuth verwenden Sie den Abschnitt [Marketplace-Plugin in Codex installieren](#marketplace-plugin-in-codex-installieren). Die folgende Konfiguration verbindet den MCP-Server direkt mit einem User-Token.
+
 Fügen Sie in `~/.codex/config.toml` folgenden Eintrag ein und ersetzen Sie die Beispiel-URL durch Ihre öffentliche HTTPS-Adresse:
 
 ```toml
