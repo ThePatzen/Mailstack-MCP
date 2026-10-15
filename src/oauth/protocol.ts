@@ -29,9 +29,11 @@ export type OAuthErrorCode =
   | 'invalid_request' | 'invalid_client' | 'invalid_redirect_uri' | 'invalid_scope'
   | 'unsupported_grant_type' | 'invalid_grant' | 'invalid_client_metadata' | 'access_denied' | 'server_error';
 
+export type OAuthDiagnosticField = 'grant_types';
+
 /** Represents a safe OAuth protocol error suitable for a standards-compatible response. */
 export class OAuthProtocolError extends Error {
-  constructor(readonly code: OAuthErrorCode, message: string) {
+  constructor(readonly code: OAuthErrorCode, message: string, readonly diagnosticField?: OAuthDiagnosticField) {
     super(message);
     this.name = 'OAuthProtocolError';
   }
@@ -128,7 +130,11 @@ export function registerPublicClient(metadata: unknown): OAuthClient {
   }
   if (input.grant_types !== undefined &&
       (!Array.isArray(input.grant_types) || input.grant_types.length !== 1 || input.grant_types[0] !== 'authorization_code')) {
-    throw new OAuthProtocolError('invalid_client_metadata', 'Only the authorization-code grant is supported.');
+    throw new OAuthProtocolError(
+      'invalid_client_metadata',
+      'Only the authorization-code grant is supported.',
+      'grant_types',
+    );
   }
   if (input.response_types !== undefined &&
       (!Array.isArray(input.response_types) || input.response_types.length !== 1 || input.response_types[0] !== 'code')) {

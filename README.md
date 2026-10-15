@@ -217,7 +217,7 @@ docker compose restart mailstack-mcp
 docker compose down
 ```
 
-Bei abgelehnten OAuth-Clientregistrierungen enthält das Container-Log ein `oauth_client_registration_rejected`-Ereignis mit HTTP-Status, OAuth-Fehlercode und sicherer Fehlerkategorie. Der Registrierungsinhalt und Redirect-URIs werden nicht protokolliert.
+Bei abgelehnten OAuth-Clientregistrierungen enthält das Container-Log ein `oauth_client_registration_rejected`-Ereignis mit HTTP-Status, OAuth-Fehlercode und sicherer Fehlerkategorie. Bei einer Ablehnung von `grant_types` protokolliert es zusätzlich bis zu acht bekannte OAuth-Grant-Namen; unbekannte Werte erscheinen als `<other>`. Andere Client-Metadaten und Redirect-URIs werden nicht protokolliert.
 
 `docker compose down` entfernt den Container, nicht den über `DATA_DIR` eingebundenen Datenordner. Entfernen Sie diesen Ordner nur, wenn Sie die gespeicherten Konten und Tokens bewusst löschen möchten.
 

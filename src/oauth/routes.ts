@@ -20,6 +20,14 @@ import {
 import { protectedResourceMetadataUrl, publicOrigin } from './resource.js';
 
 const COOKIE_OPTIONS = { path: '/', httpOnly: true, secure: true, sameSite: 'lax' as const };
+const LOGGABLE_GRANT_TYPES = new Set([
+  'authorization_code', 'refresh_token', 'client_credentials', 'password', 'implicit',
+  'urn:ietf:params:oauth:grant-type:device_code',
+  'urn:ietf:params:oauth:grant-type:jwt-bearer',
+  'urn:ietf:params:oauth:grant-type:token-exchange',
+]);
+
+type GrantTypesSummary = 'omitted' | 'not_an_array' | { values: string[]; truncated: boolean };
 
 export interface OAuthRouteDependencies {
   encryptionKey: Buffer;
@@ -30,6 +38,17 @@ export interface OAuthRouteDependencies {
 function setNoStore(res: Response): void {
   res.setHeader('Cache-Control', 'no-store, max-age=0');
   res.setHeader('Pragma', 'no-cache');
+}
+
+/** Summarizes only known OAuth grant identifiers and redacts arbitrary client values. */
+function summarizeGrantTypes(value: unknown): GrantTypesSummary {
+  if (value === undefined) return 'omitted';
+  if (!Array.isArray(value)) return 'not_an_array';
+  return {
+    values: Array.from(value.slice(0, 8), (grantType) =>
+      typeof grantType === 'string' && LOGGABLE_GRANT_TYPES.has(grantType) ? grantType : '<other>'),
+    truncated: value.length > 8,
+  };
 }
 
 /** Reads one cookie value without trusting malformed percent escapes. */
@@ -136,12 +155,20 @@ export function createOAuthRouter(dependencies: OAuthRouteDependencies): Router 
       const protocolError = error instanceof OAuthProtocolError
         ? error : new OAuthProtocolError('invalid_client_metadata', 'The client metadata is invalid.');
       const status = protocolError.code === 'server_error' ? 503 : 400;
+      const grantTypes = error instanceof OAuthProtocolError && error.diagnosticField === 'grant_types'
+        ? summarizeGrantTypes(
+          req.body && typeof req.body === 'object' && !Array.isArray(req.body)
+            ? (req.body as Record<string, unknown>).grant_types
+            : undefined,
+        )
+        : undefined;
       // Keep registration diagnostics useful without logging client-supplied metadata.
       process.stderr.write(`${JSON.stringify({
         event: 'oauth_client_registration_rejected',
         status,
         code: protocolError.code,
         reason: error instanceof OAuthProtocolError ? protocolError.message : 'Unexpected client registration error.',
+        ...(grantTypes !== undefined && { grant_types: grantTypes }),
       })}\n`);
       res.status(status)
         .json({ error: protocolError.code, error_description: protocolError.message });
