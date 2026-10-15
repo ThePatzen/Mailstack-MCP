@@ -144,10 +144,10 @@ interface OAuthConsentContext {
   clientName: string;
 }
 
-/** Resolves a pending consent screen only for the logged-in account and signed handoff cookie. */
+/** Resolves consent from the GET query or submitted POST body for the logged-in account and signed handoff cookie. */
 function oauthConsentContext(req: Request, deps: WebDependencies): OAuthConsentContext | null {
   const management = (req as ManagementRequest).management;
-  const requestId = safeText(req.query.request, 43);
+  const requestId = safeText(req.method === 'GET' ? req.query.request : req.body?.request, 43);
   const cookieRequestId = oauthHandoffRequestId(req, deps);
   if (!management?.accountId || !requestId || requestId !== cookieRequestId) return null;
   const request = findOAuthAuthorizationRequest(requestId);

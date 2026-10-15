@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.1.8] - 2026-10-15
+
+### Fixed
+- OAuth-Freigaben funktionieren nach der Auswahl eines User-Tokens wieder; die Request-ID wird beim Absenden aus dem Formular gelesen.
+
 ## [0.1.7] - 2026-10-15
 
 ### Added
