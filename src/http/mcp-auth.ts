@@ -1,6 +1,7 @@
 import type { NextFunction, Request, Response } from 'express';
 import type { AuthInfo } from '@modelcontextprotocol/server';
-import { findUserToken } from '../storage/repository.js';
+import { findOAuthAccessToken, findUserToken } from '../storage/repository.js';
+import { protectedResourceMetadataUrl, publicResource } from '../oauth/resource.js';
 
 export interface McpPrincipal {
   accountId: string;
@@ -35,9 +36,17 @@ export function authenticateMcpRequest(req: Request, res: Response, next: NextFu
   // Resolve the bearer token at the HTTP boundary; tool handlers receive its
   // account and permissions as a principal, never as caller-supplied input.
   const token = bearerToken(req.get('authorization'));
-  const authenticated = token ? findUserToken(token) : null;
+  const authenticatedUserToken = token ? findUserToken(token) : null;
+  const resource = publicResource(req);
+  const authenticatedOAuthToken = token && !authenticatedUserToken && resource
+    ? findOAuthAccessToken(token, resource) : null;
+  const authenticated = authenticatedUserToken ?? authenticatedOAuthToken;
   if (!token || !authenticated) {
-    res.setHeader('WWW-Authenticate', 'Bearer');
+    if (resource) {
+      res.setHeader('WWW-Authenticate', `Bearer resource_metadata="${protectedResourceMetadataUrl(resource)}"`);
+    } else {
+      res.setHeader('WWW-Authenticate', 'Bearer');
+    }
     res.status(401).json({ error: 'unauthorized', message: 'A valid MCP user token is required.' });
     return;
   }
@@ -54,7 +63,12 @@ export function authenticateMcpRequest(req: Request, res: Response, next: NextFu
   (req as AuthenticatedRequest).auth = {
     token,
     clientId: principal.username,
-    scopes: [],
+    scopes: principal.enabledTools.map((tool) => `mailstack:${tool}`),
+    ...(resource && {
+      resource: new URL(resource),
+      resourceMetadataUrl: protectedResourceMetadataUrl(resource),
+    }),
+    ...(authenticatedOAuthToken && { expiresAt: Math.floor(authenticatedOAuthToken.expiresAt / 1000) }),
     extra: { mailstackPrincipal: principal },
   } as AuthInfo;
   next();

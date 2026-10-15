@@ -1,4 +1,4 @@
-import { randomUUID, timingSafeEqual } from 'node:crypto';
+import { createHash, randomUUID, timingSafeEqual } from 'node:crypto';
 import type { EncryptedSecret } from '../security/crypto.js';
 import { generateToken, hashEmailLoginValue, hashToken, tokenDigestMatches } from '../security/tokens.js';
 import { getDatabase } from './database.js';
@@ -25,6 +25,59 @@ export interface AuthenticatedToken extends TokenSummary {
   username: string;
 }
 
+export interface OAuthClient {
+  clientId: string;
+  clientName: string;
+  redirectUris: string[];
+  createdAt: number;
+}
+
+const MAX_OAUTH_CLIENTS = 10_000;
+const OAUTH_CLIENT_IDLE_RETENTION_MS = 180 * 24 * 60 * 60 * 1000;
+const OAUTH_GRANT_HISTORY_RETENTION_MS = 90 * 24 * 60 * 60 * 1000;
+
+/** Reports that an instance reached its bounded OAuth client registry capacity. */
+export class OAuthClientCapacityError extends Error {
+  constructor() {
+    super('This instance has reached its OAuth client registration limit.');
+    this.name = 'OAuthClientCapacityError';
+  }
+}
+
+export interface OAuthAuthorizationRequest {
+  requestId: string;
+  clientId: string;
+  redirectUri: string;
+  resource: string;
+  state: string;
+  codeChallenge: string;
+  requestedScopes: string[];
+  accountId: string | null;
+  createdAt: number;
+  expiresAt: number;
+}
+
+export interface OAuthGrantSummary {
+  id: string;
+  accountId: string;
+  userTokenId: string;
+  userTokenLabel: string;
+  clientId: string;
+  clientName: string;
+  resource: string;
+  scopes: string[];
+  createdAt: number;
+  expiresAt: number;
+  revokedAt: number | null;
+}
+
+export interface AuthenticatedOAuthToken extends AuthenticatedToken {
+  grantId: string;
+  resource: string;
+  scopes: string[];
+  expiresAt: number;
+}
+
 interface AccountRow {
   id: string; username: string; created_at: number; updated_at: number;
   password_ciphertext: string; password_nonce: string; password_tag: string;
@@ -32,6 +85,38 @@ interface AccountRow {
 interface TokenRow {
   id: string; account_id: string; label: string; created_at: number;
   last_used_at: number | null; revoked_at: number | null; token_hash: string;
+}
+
+interface OAuthClientRow {
+  client_id: string;
+  client_name: string;
+  redirect_uris: string;
+  created_at: number;
+  last_used_at: number;
+}
+
+interface OAuthAuthorizationRequestRow {
+  request_id_hash: string;
+  client_id: string;
+  redirect_uri: string;
+  resource: string;
+  state: string;
+  code_challenge: string;
+  code_challenge_method: 'S256';
+  requested_scopes: string;
+  account_id: string | null;
+  created_at: number;
+  expires_at: number;
+  consumed_at: number | null;
+}
+
+interface OAuthAccessTokenRow extends TokenRow {
+  grant_id: string;
+  resource: string;
+  granted_scopes: string;
+  grant_expires_at: number;
+  grant_revoked_at: number | null;
+  access_expires_at: number;
 }
 
 /** Maps the database row to the public account shape without exposing encrypted credentials. */
@@ -46,6 +131,52 @@ function tokenSummary(row: TokenRow): TokenSummary {
     id: row.id, accountId: row.account_id, label: row.label, createdAt: row.created_at,
     lastUsedAt: row.last_used_at, revokedAt: row.revoked_at, permissions,
     enabledTools: Object.keys(permissions).filter((name) => permissions[name]),
+  };
+}
+
+/** Parses a stored JSON string array and rejects corrupted authorization data. */
+function storedStringArray(value: string): string[] {
+  const parsed: unknown = JSON.parse(value);
+  if (!Array.isArray(parsed) || !parsed.every((item) => typeof item === 'string')) {
+    throw new Error('Stored OAuth data is invalid.');
+  }
+  return parsed;
+}
+
+/** Deletes expired one-time OAuth data and retains grant history for ninety days. */
+function cleanupExpiredOAuthData(db: ReturnType<typeof getDatabase>, now: number): void {
+  db.prepare('DELETE FROM oauth_authorization_requests WHERE expires_at <= ?').run(now);
+  db.prepare('DELETE FROM oauth_authorization_codes WHERE expires_at <= ?').run(now);
+  db.prepare('DELETE FROM oauth_access_tokens WHERE expires_at <= ?').run(now);
+  db.prepare('DELETE FROM oauth_grants WHERE expires_at <= ?').run(now - OAUTH_GRANT_HISTORY_RETENTION_MS);
+  db.prepare(`DELETE FROM oauth_clients WHERE last_used_at <= ?
+    AND NOT EXISTS (SELECT 1 FROM oauth_grants WHERE client_id = oauth_clients.client_id)`)
+    .run(now - OAUTH_CLIENT_IDLE_RETENTION_MS);
+}
+
+/** Maps a registered public client row without exposing storage fields. */
+function oauthClientRecord(row: OAuthClientRow): OAuthClient {
+  return {
+    clientId: row.client_id,
+    clientName: row.client_name,
+    redirectUris: storedStringArray(row.redirect_uris),
+    createdAt: row.created_at,
+  };
+}
+
+/** Maps a pending authorization row and its unpersisted request identifier. */
+function authorizationRequestRecord(row: OAuthAuthorizationRequestRow, requestId: string): OAuthAuthorizationRequest {
+  return {
+    requestId,
+    clientId: row.client_id,
+    redirectUri: row.redirect_uri,
+    resource: row.resource,
+    state: row.state,
+    codeChallenge: row.code_challenge,
+    requestedScopes: storedStringArray(row.requested_scopes),
+    accountId: row.account_id,
+    createdAt: row.created_at,
+    expiresAt: row.expires_at,
   };
 }
 
@@ -108,6 +239,254 @@ export function revokeToken(accountId: string, tokenId: string): boolean {
 /** Permanently deletes a revoked token owned by the requested account. */
 export function deleteToken(accountId: string, tokenId: string): boolean {
   return getDatabase().prepare('DELETE FROM tokens WHERE id = ? AND account_id = ? AND revoked_at IS NOT NULL').run(tokenId, accountId).changes > 0;
+}
+
+/** Registers one OAuth public client and stores its exact callback allowlist. */
+export function registerOAuthClient(clientName: string, redirectUris: string[]): OAuthClient {
+  const cleanName = clientName.trim();
+  if (!cleanName || cleanName.length > 100 || /[\r\n\0]/.test(cleanName) ||
+      !Array.isArray(redirectUris) || redirectUris.length < 1 || redirectUris.length > 16 ||
+      !redirectUris.every((uri) => typeof uri === 'string' && uri.length > 0 && uri.length <= 2048 && !/[\r\n\0]/.test(uri))) {
+    throw new Error('Invalid OAuth client registration.');
+  }
+  const clientId = generateToken();
+  const now = Date.now();
+  const db = getDatabase();
+  db.transaction(() => {
+    cleanupExpiredOAuthData(db, now);
+    const count = (db.prepare('SELECT COUNT(*) AS count FROM oauth_clients').get() as { count: number }).count;
+    if (count >= MAX_OAUTH_CLIENTS) throw new OAuthClientCapacityError();
+    db.prepare(`INSERT INTO oauth_clients (client_id, client_name, redirect_uris, created_at, last_used_at)
+      VALUES (?, ?, ?, ?, ?)`).run(clientId, cleanName, JSON.stringify([...new Set(redirectUris)]), now, now);
+  }).immediate();
+  return { clientId, clientName: cleanName, redirectUris: [...new Set(redirectUris)], createdAt: now };
+}
+
+/** Resolves a registered public client by its public identifier. */
+export function findOAuthClient(clientId: string): OAuthClient | null {
+  if (!/^[A-Za-z0-9_-]{43}$/.test(clientId)) return null;
+  const db = getDatabase();
+  db.prepare('UPDATE oauth_clients SET last_used_at = ? WHERE client_id = ?').run(Date.now(), clientId);
+  const row = db.prepare('SELECT * FROM oauth_clients WHERE client_id = ?').get(clientId) as OAuthClientRow | undefined;
+  return row ? oauthClientRecord(row) : null;
+}
+
+/** Stores a browser authorization transaction under a hash of its random handle. */
+export function createOAuthAuthorizationRequest(input: {
+  clientId: string; redirectUri: string; resource: string; state: string;
+  codeChallenge: string; requestedScopes: string[]; expiresAt: number;
+}): string {
+  const now = Date.now();
+  if (!/^[A-Za-z0-9_-]{43}$/.test(input.clientId) || !input.redirectUri || !input.resource ||
+      !input.state || input.state.length > 1024 || !/^[A-Za-z0-9_-]{43}$/.test(input.codeChallenge) ||
+      !input.requestedScopes.length || !input.requestedScopes.every((scope) => /^mailstack:[a-z][a-z0-9_]{0,99}$/.test(scope)) ||
+      !Number.isSafeInteger(input.expiresAt) || input.expiresAt <= now) {
+    throw new Error('Invalid OAuth authorization request.');
+  }
+  const requestId = generateToken();
+  const db = getDatabase();
+  db.transaction(() => {
+    cleanupExpiredOAuthData(db, now);
+    db.prepare(`INSERT INTO oauth_authorization_requests (
+    request_id_hash, client_id, redirect_uri, resource, state, code_challenge,
+    code_challenge_method, requested_scopes, created_at, expires_at
+    ) VALUES (?, ?, ?, ?, ?, ?, 'S256', ?, ?, ?)`).run(
+      hashToken(requestId), input.clientId, input.redirectUri, input.resource, input.state,
+      input.codeChallenge, JSON.stringify(input.requestedScopes), now, input.expiresAt,
+    );
+  }).immediate();
+  return requestId;
+}
+
+/** Loads an unexpired, unconsumed authorization transaction by its random handle. */
+export function findOAuthAuthorizationRequest(requestId: string, now = Date.now()): OAuthAuthorizationRequest | null {
+  if (!/^[A-Za-z0-9_-]{43}$/.test(requestId) || !Number.isSafeInteger(now)) return null;
+  const digest = hashToken(requestId);
+  const row = getDatabase().prepare(`SELECT * FROM oauth_authorization_requests
+    WHERE request_id_hash = ? AND expires_at > ? AND consumed_at IS NULL`).get(digest, now) as OAuthAuthorizationRequestRow | undefined;
+  if (!row || !tokenDigestMatches(requestId, row.request_id_hash)) return null;
+  return authorizationRequestRecord(row, requestId);
+}
+
+/** Binds a pending authorization transaction to the account established by Mailstack login. */
+export function bindOAuthAuthorizationRequest(requestId: string, accountId: string, now = Date.now()): boolean {
+  if (!/^[A-Za-z0-9_-]{43}$/.test(requestId) || !accountId || !Number.isSafeInteger(now)) return false;
+  const result = getDatabase().prepare(`UPDATE oauth_authorization_requests SET account_id = ?
+    WHERE request_id_hash = ? AND expires_at > ? AND consumed_at IS NULL
+      AND (account_id IS NULL OR account_id = ?)
+      AND EXISTS (SELECT 1 FROM accounts WHERE id = ?)`)
+    .run(accountId, hashToken(requestId), now, accountId, accountId);
+  return result.changes === 1;
+}
+
+/** Closes an unconsumed authorization request only for the account bound to it. */
+export function cancelOAuthAuthorizationRequest(requestId: string, accountId: string): boolean {
+  if (!/^[A-Za-z0-9_-]{43}$/.test(requestId) || !accountId) return false;
+  return getDatabase().prepare(`UPDATE oauth_authorization_requests SET consumed_at = ?
+    WHERE request_id_hash = ? AND account_id = ? AND consumed_at IS NULL AND expires_at > ?`)
+    .run(Date.now(), hashToken(requestId), accountId, Date.now()).changes === 1;
+}
+
+/** Issues a one-time code only for the authenticated account's active, permission-compatible User-Token. */
+export function createOAuthAuthorizationCode(input: {
+  requestId: string; accountId: string; userTokenId: string; grantedScopes: string[]; expiresAt: number;
+}): string | null {
+  const now = Date.now();
+  if (!/^[A-Za-z0-9_-]{43}$/.test(input.requestId) || !input.accountId || !input.userTokenId ||
+      !input.grantedScopes.length || !input.grantedScopes.every((scope) => /^mailstack:[a-z][a-z0-9_]{0,99}$/.test(scope)) ||
+      !Number.isSafeInteger(input.expiresAt) || input.expiresAt <= now) return null;
+  const db = getDatabase();
+  return db.transaction(() => {
+    cleanupExpiredOAuthData(db, now);
+    const requestDigest = hashToken(input.requestId);
+    const request = db.prepare(`SELECT * FROM oauth_authorization_requests
+      WHERE request_id_hash = ? AND account_id = ? AND expires_at > ? AND consumed_at IS NULL`)
+      .get(requestDigest, input.accountId, now) as OAuthAuthorizationRequestRow | undefined;
+    if (!request || !tokenDigestMatches(input.requestId, request.request_id_hash)) return null;
+
+    const token = db.prepare(`SELECT id FROM tokens
+      WHERE id = ? AND account_id = ? AND revoked_at IS NULL`).get(input.userTokenId, input.accountId) as { id: string } | undefined;
+    if (!token) return null;
+    const allowedScopes = new Set((db.prepare(`SELECT tool_name FROM tool_permissions
+      WHERE token_id = ? AND allowed = 1`).all(input.userTokenId) as Array<{ tool_name: string }>).map((row) => `mailstack:${row.tool_name}`));
+    const requestedScopes = new Set(storedStringArray(request.requested_scopes));
+    if (input.grantedScopes.some((scope) => !requestedScopes.has(scope) || !allowedScopes.has(scope))) return null;
+
+    const code = generateToken();
+    const expiresAt = Math.min(input.expiresAt, request.expires_at, now + 600_000);
+    if (expiresAt <= now) return null;
+    const consumed = db.prepare(`UPDATE oauth_authorization_requests SET consumed_at = ?
+      WHERE request_id_hash = ? AND consumed_at IS NULL AND expires_at > ?`).run(now, requestDigest, now);
+    if (!consumed.changes) return null;
+    db.prepare(`INSERT INTO oauth_authorization_codes (
+      code_hash, request_id_hash, account_id, user_token_id, granted_scopes, created_at, expires_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?)`).run(
+      hashToken(code), requestDigest, input.accountId, input.userTokenId,
+      JSON.stringify(input.grantedScopes), now, expiresAt,
+    );
+    return code;
+  }).immediate();
+}
+
+/** Redeems a PKCE-bound authorization code once and issues an opaque, short-lived access token. */
+export function exchangeOAuthAuthorizationCode(input: {
+  code: string; clientId: string; redirectUri: string; resource: string;
+  codeVerifier: string; now?: number; accessTokenTtlMs: number;
+}): { accessToken: string; grantId: string; scopes: string[]; expiresAt: number } | null {
+  const now = input.now ?? Date.now();
+  if (!/^[A-Za-z0-9_-]{43}$/.test(input.code) || !/^[A-Za-z0-9_-]{43}$/.test(input.clientId) ||
+      !/^[A-Za-z0-9._~-]{43,128}$/.test(input.codeVerifier) || !input.redirectUri || !input.resource ||
+      !Number.isSafeInteger(now) || !Number.isSafeInteger(input.accessTokenTtlMs) || input.accessTokenTtlMs <= 0) return null;
+  const challenge = createHash('sha256').update(input.codeVerifier, 'ascii').digest('base64url');
+  const db = getDatabase();
+  return db.transaction(() => {
+    cleanupExpiredOAuthData(db, now);
+    const codeDigest = hashToken(input.code);
+    const row = db.prepare(`SELECT c.code_hash, c.request_id_hash, c.account_id, c.user_token_id,
+      c.granted_scopes, c.expires_at AS code_expires_at, c.consumed_at,
+      r.client_id, r.redirect_uri, r.resource, r.code_challenge,
+      t.id AS active_token_id
+      FROM oauth_authorization_codes c
+      JOIN oauth_authorization_requests r ON r.request_id_hash = c.request_id_hash
+      JOIN tokens t ON t.id = c.user_token_id AND t.account_id = c.account_id AND t.revoked_at IS NULL
+      WHERE c.code_hash = ? AND c.expires_at > ? AND c.consumed_at IS NULL`)
+      .get(codeDigest, now) as {
+        code_hash: string; request_id_hash: string; account_id: string; user_token_id: string;
+        granted_scopes: string; code_expires_at: number; consumed_at: number | null;
+        client_id: string; redirect_uri: string; resource: string; code_challenge: string; active_token_id: string;
+      } | undefined;
+    if (!row || !tokenDigestMatches(input.code, row.code_hash) || row.client_id !== input.clientId ||
+        row.redirect_uri !== input.redirectUri || row.resource !== input.resource ||
+        !timingSafeEqual(Buffer.from(challenge), Buffer.from(row.code_challenge))) return null;
+
+    const requestedGrantScopes = storedStringArray(row.granted_scopes);
+    const currentScopes = new Set((db.prepare(`SELECT tool_name FROM tool_permissions
+      WHERE token_id = ? AND allowed = 1`).all(row.user_token_id) as Array<{ tool_name: string }>).map((entry) => `mailstack:${entry.tool_name}`));
+    const grantedScopes = requestedGrantScopes.filter((scope) => currentScopes.has(scope));
+    if (!grantedScopes.length) return null;
+
+    const consumed = db.prepare(`UPDATE oauth_authorization_codes SET consumed_at = ?
+      WHERE code_hash = ? AND consumed_at IS NULL AND expires_at > ?`).run(now, codeDigest, now);
+    if (!consumed.changes) return null;
+    const grantId = randomUUID();
+    const expiresAt = now + input.accessTokenTtlMs;
+    const accessToken = generateToken();
+    db.prepare(`INSERT INTO oauth_grants (
+      id, account_id, user_token_id, client_id, resource, granted_scopes, created_at, expires_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`).run(
+      grantId, row.account_id, row.user_token_id, row.client_id, row.resource,
+      JSON.stringify(grantedScopes), now, expiresAt,
+    );
+    db.prepare(`INSERT INTO oauth_access_tokens (access_token_hash, grant_id, created_at, expires_at)
+      VALUES (?, ?, ?, ?)`).run(hashToken(accessToken), grantId, now, expiresAt);
+    return { accessToken, grantId, scopes: grantedScopes, expiresAt };
+  }).immediate();
+}
+
+/** Resolves a live OAuth token to its parent token's current account permissions. */
+export function findOAuthAccessToken(token: string, resource: string, now = Date.now()): AuthenticatedOAuthToken | null {
+  if (!/^[A-Za-z0-9_-]{43}$/.test(token) || !resource || !Number.isSafeInteger(now)) return null;
+  const digest = hashToken(token);
+  const db = getDatabase();
+  return db.transaction(() => {
+    const row = db.prepare(`SELECT t.*, a.username, g.id AS grant_id, g.resource,
+      g.granted_scopes, g.expires_at AS grant_expires_at, g.revoked_at AS grant_revoked_at,
+      at.expires_at AS access_expires_at, at.access_token_hash
+      FROM oauth_access_tokens at
+      JOIN oauth_grants g ON g.id = at.grant_id
+      JOIN tokens t ON t.id = g.user_token_id AND t.account_id = g.account_id AND t.revoked_at IS NULL
+      JOIN accounts a ON a.id = g.account_id
+      WHERE at.access_token_hash = ? AND at.expires_at > ? AND g.expires_at > ?
+        AND g.revoked_at IS NULL AND g.resource = ?`)
+      .get(digest, now, now, resource) as (OAuthAccessTokenRow & {
+        username: string; access_token_hash: string;
+      }) | undefined;
+    if (!row || !tokenDigestMatches(token, row.access_token_hash)) return null;
+    const scopes = storedStringArray(row.granted_scopes);
+    const scopeSet = new Set(scopes.map((scope) => scope.slice('mailstack:'.length)));
+    const summary = tokenSummary(row);
+    const lastUsedAt = now;
+    db.prepare('UPDATE oauth_access_tokens SET last_used_at = ? WHERE access_token_hash = ?').run(now, digest);
+    db.prepare('UPDATE tokens SET last_used_at = ? WHERE id = ? AND revoked_at IS NULL').run(now, row.id);
+    return {
+      ...summary,
+      username: row.username,
+      enabledTools: summary.enabledTools.filter((tool) => scopeSet.has(tool)),
+      grantId: row.grant_id,
+      resource: row.resource,
+      scopes,
+      expiresAt: Math.min(row.access_expires_at, row.grant_expires_at),
+      lastUsedAt,
+    };
+  })();
+}
+
+/** Lists OAuth grants only for one account, including revoked connections for management. */
+export function listOAuthGrants(accountId: string): OAuthGrantSummary[] {
+  const rows = getDatabase().prepare(`SELECT g.id, g.account_id, g.user_token_id,
+    t.label AS user_token_label, g.client_id, c.client_name, g.resource,
+    g.granted_scopes, g.created_at, g.expires_at, g.revoked_at
+    FROM oauth_grants g
+    JOIN tokens t ON t.id = g.user_token_id
+    JOIN oauth_clients c ON c.client_id = g.client_id
+    WHERE g.account_id = ? ORDER BY g.created_at DESC, g.id`).all(accountId) as Array<{
+      id: string; account_id: string; user_token_id: string; user_token_label: string;
+      client_id: string; client_name: string; resource: string; granted_scopes: string;
+      created_at: number; expires_at: number; revoked_at: number | null;
+    }>;
+  return rows.map((row) => ({
+    id: row.id, accountId: row.account_id, userTokenId: row.user_token_id,
+    userTokenLabel: row.user_token_label, clientId: row.client_id, clientName: row.client_name,
+    resource: row.resource, scopes: storedStringArray(row.granted_scopes),
+    createdAt: row.created_at, expiresAt: row.expires_at, revokedAt: row.revoked_at,
+  }));
+}
+
+/** Revokes one OAuth grant only when it belongs to the signed-in account and selected User-Token. */
+export function revokeOAuthGrant(accountId: string, userTokenId: string, grantId: string): boolean {
+  return getDatabase().prepare(`UPDATE oauth_grants SET revoked_at = ?
+    WHERE id = ? AND account_id = ? AND user_token_id = ? AND revoked_at IS NULL`)
+    .run(Date.now(), grantId, accountId, userTokenId).changes === 1;
 }
 
 /** Sets one tool permission for an active token owned by the requested account. */

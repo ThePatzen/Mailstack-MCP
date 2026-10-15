@@ -1,4 +1,4 @@
-import type { McpServer } from '@modelcontextprotocol/server';
+import { requireScopes, type McpServer } from '@modelcontextprotocol/server';
 import * as z from 'zod/v4';
 import type { McpPrincipal } from '../../http/mcp-auth.js';
 import { sendAndArchive } from '../../smtp/sender.js';
@@ -33,6 +33,8 @@ export function registerSendEmailTool(server: McpServer, principal: McpPrincipal
   if (!principal.enabledTools.includes('send_email')) return;
   server.registerTool('send_email', {
     description: 'Send an email using the mailbox account and save the same message to Sent.',
+    _meta: { securitySchemes: [{ type: 'oauth2', scopes: ['mailstack:send_email'] }] },
+    scopeChallenge: requireScopes('mailstack:send_email'),
     inputSchema: sendEmailInput,
     outputSchema: sendEmailOutput,
     annotations: { destructiveHint: false },

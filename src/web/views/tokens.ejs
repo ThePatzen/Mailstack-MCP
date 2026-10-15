@@ -49,10 +49,10 @@
         <div class="panel-heading"><div><h2 id="setup-title">ChatGPT und Codex einrichten</h2><p class="muted">Verbinden Sie ChatGPT direkt oder installieren Sie das Plugin in Codex.</p></div><span class="setup-mark" aria-hidden="true">↗</span></div>
         <div class="setup-endpoint"><span>Server-Adresse</span><code><%= mcpUrl || 'Über HTTPS öffnen, um die Server-Adresse anzuzeigen' %></code></div>
         <div class="setup-columns">
-          <div class="setup-step"><span class="setup-number">1</span><div><strong>ChatGPT oder Codex direkt verbinden</strong><p>In ChatGPT öffnen Sie <strong>Einstellungen → Apps → Erstellen</strong> und fügen einen benutzerdefinierten MCP-Server hinzu. Verwenden Sie die Server-Adresse oben, wählen Sie API-Key mit Bearer-Schema und geben Sie Ihr persönliches User-Token ein. Scannen Sie die Tools und erstellen Sie die App. Die Verfügbarkeit hängt von den Plan- und Workspace-Einstellungen ab.</p><p>Für die direkte Codex-Konfiguration fügen Sie Folgendes in <code>~/.codex/config.toml</code> ein:</p><% if (mcpUrl) { %><pre class="setup-code"><code>[mcp_servers.<%= mcpServerName %>]
+          <div class="setup-step"><span class="setup-number">1</span><div><strong>Direkte Token-Konfiguration</strong><p>Für MCP-Clients ohne OAuth-Unterstützung können Sie das User-Token direkt verwenden. In ChatGPT öffnen Sie <strong>Einstellungen → Apps → Erstellen</strong>, fügen einen benutzerdefinierten MCP-Server hinzu und wählen API-Key mit Bearer-Schema. Die Verfügbarkeit hängt von den Plan- und Workspace-Einstellungen ab.</p><p>Für die direkte Codex-Konfiguration fügen Sie Folgendes in <code>~/.codex/config.toml</code> ein:</p><% if (mcpUrl) { %><pre class="setup-code"><code>[mcp_servers.<%= mcpServerName %>]
 url = "<%= mcpUrl %>"
 bearer_token_env_var = "<%= mcpTokenEnvironmentName %>"</code></pre><% } %><p>Setzen Sie <code><%= mcpTokenEnvironmentName %></code> in der Umgebung von Codex auf ein User-Token. Speichern Sie es nicht in der Konfigurationsdatei.</p></div></div>
-          <div class="setup-step"><span class="setup-number">2</span><div><strong>Plugin in Codex installieren</strong><p>Der öffentliche Katalog ist <a href="/marketplace.json" target="_blank" rel="noreferrer">hier einsehbar</a>. Fügen Sie den Git-Marketplace in Codex hinzu:</p><% if (mcpUrl) { %><pre class="setup-code"><code>codex plugin marketplace add <%= mcpUrl.replace(/\/mcp$/, '/marketplace.git') %></code></pre><% } %><p>Öffnen Sie <code>/plugins</code> und installieren Sie <%= pluginName %>. Der Marketplace enthält die MCP-Adresse, aber kein Token. Bei der Plugin-Installation geben Sie Ihr persönliches User-Token im Authentifizierungsdialog ein.</p><p>Falls Codex keinen Authentifizierungsdialog anbietet, verwenden Sie die direkte Codex-Konfiguration im ersten Schritt.</p></div></div>
+          <div class="setup-step"><span class="setup-number">2</span><div><strong>Plugin mit OAuth verbinden</strong><p>Der öffentliche Katalog ist <a href="/marketplace.json" target="_blank" rel="noreferrer">hier einsehbar</a>. Fügen Sie den Git-Marketplace in Codex hinzu:</p><% if (mcpUrl) { %><pre class="setup-code"><code>codex plugin marketplace add <%= mcpUrl.replace(/\/mcp$/, '/marketplace.git') %></code></pre><% } %><p>Öffnen Sie <code>/plugins</code> und installieren Sie <%= pluginName %>. Der Marketplace enthält die MCP-Adresse, aber kein Token. Beim Verbinden melden Sie sich mit Ihrem Mailstack-Konto an und wählen ein aktives User-Token sowie die gewünschten Funktionen aus. Dasselbe OAuth-Login können Sie beim Erstellen einer benutzerdefinierten MCP-App in ChatGPT verwenden. Es wird kein User-Token in die Plugin-Dateien geschrieben.</p></div></div>
         </div>
       </section>
       <section class="token-section" aria-labelledby="tokens-title">
@@ -76,6 +76,16 @@ bearer_token_env_var = "<%= mcpTokenEnvironmentName %>"</code></pre><% } %><p>Se
                   </div>
                 </div>
                 <details class="token-permissions-inline"><summary>Berechtigungen ansehen</summary><div class="permission-grid"><% toolNames.forEach((tool) => { %><span class="permission-chip <%= token.permissions[tool] === true ? 'permission-allowed' : '' %>"><span class="permission-state" aria-hidden="true"></span><%= toolLabels[tool] %></span><% }) %></div></details>
+                <% const tokenGrants = oauthGrants.filter((grant) => grant.userTokenId === token.id); %>
+                <% if (tokenGrants.length) { %>
+                  <details class="token-permissions-inline oauth-grants"><summary>OAuth-Verbindungen (<%= tokenGrants.length %>)</summary><div class="permission-grid oauth-grant-list">
+                    <% tokenGrants.forEach((grant) => { %>
+                      <div class="oauth-grant-row"><div><strong><%= grant.clientName %></strong><p class="muted"><%= grant.scopes.map((scope) => toolLabels[scope.slice('mailstack:'.length)] || scope).join(' · ') %></p><small>Freigegeben <%= new Date(grant.createdAt).toLocaleString('de-AT') %> · <%= grant.revokedAt ? 'widerrufen' : grant.expiresAt <= Date.now() ? 'abgelaufen' : `gültig bis ${new Date(grant.expiresAt).toLocaleString('de-AT')}` %></small></div>
+                        <% if (!grant.revokedAt && grant.expiresAt > Date.now() && !token.revokedAt) { %><form method="post" action="/tokens/<%= token.id %>/oauth-grants/<%= grant.id %>/revoke"><input type="hidden" name="_csrf" value="<%= csrf %>"><button class="button button-danger-quiet" type="submit">Verbindung widerrufen</button></form><% } %>
+                      </div>
+                    <% }) %>
+                  </div></details>
+                <% } %>
               </article>
             <% }) %>
           </div>

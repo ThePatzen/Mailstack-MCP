@@ -121,7 +121,7 @@ export function createMailstackPluginFiles(mcpUrl: string, pluginName: string, o
         url: mcpUrl,
         extensions: {
           'com.openai': {
-            auth: { type: 'api_key', headerScheme: 'bearer' },
+            auth: { type: 'oauth', client: { mode: 'dcr' } },
           },
         },
       },
@@ -136,11 +136,11 @@ description: Erklärt die Verbindung mit dem persönlichen ${pluginName}-Server.
 
 Der Server-Endpunkt dieses Plugins ist \`${mcpUrl}\`.
 
-Bei der Plugin-Installation fragt Codex nach dem persönlichen User-Token für den enthaltenen MCP-Server. Verwenden Sie nicht das statische Verwaltungstoken. Das Token ist nicht Teil der Plugin-Dateien und wird nicht an den öffentlichen Marketplace übertragen.
+Bei der Verbindung öffnet sich die Mailstack-Anmeldung. Melden Sie sich mit Ihrem bestehenden Mailstack-Konto an und wählen Sie anschließend ein aktives User-Token sowie die gewünschten Funktionen aus. Das OAuth-Token wird automatisch für diese Verbindung ausgestellt. Verwenden Sie nicht das statische Verwaltungstoken.
 
 1. Erstellen Sie in der Verwaltungsoberfläche ein persönliches **User-Token**. Verwenden Sie nicht das statische Verwaltungstoken.
-2. Installieren Sie das Plugin aus dem Marketplace. Geben Sie das User-Token im Authentifizierungsdialog für den MCP-Server ein.
-3. Wenn Sie Codex ohne Marketplace-Plugin direkt verbinden möchten, setzen Sie das User-Token lokal als Umgebungsvariable \`${tokenEnvironmentName}\` und tragen Sie Folgendes in \`~/.codex/config.toml\` ein:
+2. Installieren Sie das Plugin aus dem Marketplace. Melden Sie sich im OAuth-Fenster an und wählen Sie das User-Token und die gewünschten Funktionen aus.
+3. Wenn Sie einen MCP-Client ohne OAuth-Unterstützung direkt verbinden möchten, setzen Sie das User-Token lokal als Umgebungsvariable \`${tokenEnvironmentName}\` und tragen Sie Folgendes in \`~/.codex/config.toml\` ein:
 
 \`\`\`toml
 [mcp_servers.${packageName}]
@@ -167,11 +167,11 @@ codex plugin marketplace add ${marketplaceUrl}
 
 Öffnen Sie in Codex \`/plugins\` und installieren Sie ${pluginName} aus diesem Marketplace.
 
-Die Plugin-Installation bindet den MCP-Server ein und fragt nach dem persönlichen User-Token. Verwenden Sie nicht das statische Verwaltungstoken.
+Beim Verbinden öffnet Codex die Mailstack-Anmeldung. Melden Sie sich mit Ihrem bestehenden Mailstack-Konto an, wählen Sie ein aktives User-Token und geben Sie die gewünschten Funktionen frei. Das Plugin erhält ein OAuth-Token, das an dieses Konto und User-Token gebunden ist.
 
 ## ChatGPT
 
-Öffnen Sie in ChatGPT **Einstellungen → Apps → Erstellen** und fügen Sie einen benutzerdefinierten MCP-Server hinzu. Verwenden Sie die Server-Adresse \`${mcpUrl}\`, wählen Sie API-Key-Authentifizierung mit Bearer-Schema und geben Sie Ihr persönliches User-Token ein. Scannen Sie die Tools und erstellen Sie die App; falls ChatGPT die Option anbietet, wählen Sie **Create as a plugin**. Die Verfügbarkeit hängt von den ChatGPT-Plan- und Workspace-Einstellungen für benutzerdefinierte MCP-Apps ab.
+Öffnen Sie in ChatGPT **Einstellungen → Apps → Erstellen** und fügen Sie einen benutzerdefinierten MCP-Server hinzu. Verwenden Sie die Server-Adresse \`${mcpUrl}\` und wählen Sie OAuth. Melden Sie sich im Mailstack-Fenster an und wählen Sie ein aktives User-Token sowie die gewünschten Funktionen aus. Scannen Sie die Tools und erstellen Sie die App; falls ChatGPT die Option anbietet, wählen Sie **Create as a plugin**. Die Verfügbarkeit hängt von den ChatGPT-Plan- und Workspace-Einstellungen für benutzerdefinierte MCP-Apps ab.
 `;
 
   const files = [

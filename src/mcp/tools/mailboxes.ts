@@ -1,4 +1,4 @@
-import type { McpServer } from '@modelcontextprotocol/server';
+import { requireScopes, type McpServer } from '@modelcontextprotocol/server';
 import * as z from 'zod/v4';
 import { createMailbox, deleteMailbox, listMailboxes, renameMailbox } from '../../imap/mailboxes.js';
 import type { McpPrincipal } from '../../http/mcp-auth.js';
@@ -17,6 +17,8 @@ export function registerMailboxTools(server: McpServer, principal: McpPrincipal)
   if (principal.enabledTools.includes('list_mailboxes')) {
     server.registerTool('list_mailboxes', {
       description: 'List the mailboxes available to the authenticated account.',
+      _meta: { securitySchemes: [{ type: 'oauth2', scopes: ['mailstack:list_mailboxes'] }] },
+      scopeChallenge: requireScopes('mailstack:list_mailboxes'),
       inputSchema: z.object({}),
       outputSchema: z.object({ mailboxes: z.array(mailboxOutput) }),
       annotations: { readOnlyHint: true },
@@ -28,6 +30,8 @@ export function registerMailboxTools(server: McpServer, principal: McpPrincipal)
   if (principal.enabledTools.includes('create_mailbox')) {
     server.registerTool('create_mailbox', {
       description: 'Create a mailbox for the authenticated account.',
+      _meta: { securitySchemes: [{ type: 'oauth2', scopes: ['mailstack:create_mailbox'] }] },
+      scopeChallenge: requireScopes('mailstack:create_mailbox'),
       inputSchema: z.object({ name: mailboxName }),
       outputSchema: z.object({ success: z.boolean(), name: z.string() }),
       annotations: { destructiveHint: false },
@@ -40,6 +44,8 @@ export function registerMailboxTools(server: McpServer, principal: McpPrincipal)
   if (principal.enabledTools.includes('rename_mailbox')) {
     server.registerTool('rename_mailbox', {
       description: 'Rename an existing mailbox.',
+      _meta: { securitySchemes: [{ type: 'oauth2', scopes: ['mailstack:rename_mailbox'] }] },
+      scopeChallenge: requireScopes('mailstack:rename_mailbox'),
       inputSchema: z.object({ oldName: mailboxName, newName: mailboxName }),
       outputSchema: z.object({ success: z.boolean(), oldName: z.string(), newName: z.string() }),
       annotations: { destructiveHint: false },
@@ -52,6 +58,8 @@ export function registerMailboxTools(server: McpServer, principal: McpPrincipal)
   if (principal.enabledTools.includes('delete_mailbox')) {
     server.registerTool('delete_mailbox', {
       description: 'Delete an existing mailbox and its contents.',
+      _meta: { securitySchemes: [{ type: 'oauth2', scopes: ['mailstack:delete_mailbox'] }] },
+      scopeChallenge: requireScopes('mailstack:delete_mailbox'),
       inputSchema: z.object({ name: mailboxName }),
       outputSchema: z.object({ success: z.boolean(), name: z.string() }),
       annotations: { destructiveHint: true },

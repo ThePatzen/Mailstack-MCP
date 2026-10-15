@@ -149,9 +149,9 @@ Bei Verwaltungstoken geben Sie ein statisches Verwaltungstoken aus `MCP_STATIC_T
 
 Anmeldeversuche werden pro IP-Adresse und normalisiertem Benutzernamen begrenzt: höchstens 30 Versuche je IP-Adresse und 8 je Konto innerhalb von 15 Minuten. Die Zähler liegen im Arbeitsspeicher des Prozesses und werden bei einem Neustart zurückgesetzt; bei mehreren Dienstinstanzen werden sie nicht gemeinsam genutzt. Die Anwendung vertraut genau einem Reverse-Proxy-Hop. Konfigurieren Sie den Proxy so, dass die tatsächliche Client-IP am Ende von `X-Forwarded-For` steht (wie im Nginx-Beispiel), und verlassen Sie sich nicht auf einen vom Client gelieferten Wert. Abgelaufene E-Mail-Code-Anfragen werden beim Erstellen einer neuen Anfrage opportunistisch aus SQLite entfernt.
 
-Nach der Anmeldung erstellen Sie unter **Zugriffstoken** ein benanntes User-Token. Der vollständige Wert wird nur einmal angezeigt. Kopieren Sie ihn sofort in die MCP-Client-Konfiguration und speichern Sie ihn wie ein Passwort. Verlorene Werte können nicht erneut angezeigt werden; erstellen Sie in diesem Fall ein neues Token und widerrufen Sie das alte. Für jedes Token können Sie einzelne Funktionen erlauben oder sperren. Ein Widerruf macht das Token unbrauchbar. Widerrufene Einträge lassen sich anschließend dauerhaft löschen.
+Nach der Anmeldung erstellen Sie unter **Zugriffstoken** ein benanntes User-Token und schalten die gewünschten Funktionen frei. Der vollständige Wert wird nur einmal angezeigt. Für direkte MCP-Konfigurationen benötigen Sie diesen Wert als Bearer-Token. Beim OAuth-Login wählen Sie das User-Token im Zustimmungsdialog; der Server stellt dafür ein kurzlebiges OAuth-Token aus. Beide Zugriffswege verwenden dieselben User-Token-Berechtigungen. Ein Widerruf des User-Tokens beendet alle davon abhängigen OAuth-Verbindungen. Einzelne OAuth-Verbindungen können Sie ebenfalls in der Token-Verwaltung widerrufen. Widerrufene User-Token-Einträge lassen sich dauerhaft löschen.
 
-Der MCP-Server stellt einen Streamable-HTTP-Endpunkt unter `https://mail-mcp.example.net/mcp` bereit. Der MCP-Client muss diesen Endpunkt mit dem erstellten User-Token als Bearer-Token aufrufen (`Authorization: Bearer <USER_TOKEN>`). Das statische Verwaltungstoken aus `MCP_STATIC_TOKENS` dient nur zur Anmeldung in der Verwaltungsoberfläche und gehört nicht in die MCP-Client-Konfiguration.
+Der MCP-Server stellt einen Streamable-HTTP-Endpunkt unter `https://mail-mcp.example.net/mcp` bereit. Er unterstützt OAuth Authorization Code mit PKCE und weiterhin direkte User-Token als Bearer-Token (`Authorization: Bearer <USER_TOKEN>`). Das statische Verwaltungstoken aus `MCP_STATIC_TOKENS` dient nur zur Anmeldung in der Verwaltungsoberfläche und kann nicht für MCP-Aufrufe verwendet werden.
 
 ### Codex konfigurieren
 
@@ -167,7 +167,7 @@ Setzen Sie `MAILSTACK_MCP_MAILSTACK_MCP_TOKEN` in der Umgebung, in der Codex ges
 
 ### ChatGPT verbinden
 
-In ChatGPT öffnen Sie **Einstellungen → Apps → Erstellen** und fügen einen benutzerdefinierten MCP-Server hinzu. Verwenden Sie `https://mail-mcp.example.net/mcp`, wählen Sie API-Key-Authentifizierung mit Bearer-Schema und geben Sie Ihr persönliches User-Token ein. Scannen Sie die Tools und erstellen Sie die App. Die Verfügbarkeit benutzerdefinierter MCP-Apps hängt vom ChatGPT-Plan und den Workspace-Einstellungen ab. Details stehen in der [ChatGPT-MCP-Dokumentation](https://help.openai.com/en/articles/12584461-developer-mode-and-full-mcp-connectors-in-chatgpt).
+In ChatGPT öffnen Sie **Einstellungen → Apps → Erstellen** und fügen einen benutzerdefinierten MCP-Server hinzu. Verwenden Sie `https://mail-mcp.example.net/mcp` und wählen Sie OAuth. Melden Sie sich im Mailstack-Fenster an und wählen Sie ein aktives User-Token sowie die gewünschten Funktionen aus. Scannen Sie die Tools und erstellen Sie die App. Die Verfügbarkeit benutzerdefinierter MCP-Apps hängt vom ChatGPT-Plan und den Workspace-Einstellungen ab. Details stehen in der [ChatGPT-MCP-Dokumentation](https://help.openai.com/en/articles/12584461-developer-mode-and-full-mcp-connectors-in-chatgpt).
 
 ### Marketplace-Plugin in Codex installieren
 
@@ -177,9 +177,9 @@ Fügen Sie den dynamisch erzeugten Marketplace Ihrer Instanz in Codex hinzu:
 codex plugin marketplace add https://mail-mcp.example.net/marketplace.git
 ```
 
-Öffnen Sie anschließend in Codex `/plugins` und installieren Sie das Mailstack-Plugin aus diesem Marketplace. Der Marketplace-Katalog ist öffentlich unter `https://mail-mcp.example.net/marketplace.json` einsehbar. Git-Zugriff und Katalog enthalten nur das für diese Instanz erzeugte Plugin samt MCP-Adresse, kein User-Token und kein Verwaltungstoken. Bei der Plugin-Installation geben Sie Ihr persönliches User-Token im Authentifizierungsdialog ein; der MCP-Server sendet es als Bearer-Token.
+Öffnen Sie anschließend in Codex `/plugins` und installieren Sie das Mailstack-Plugin aus diesem Marketplace. Der Marketplace-Katalog ist öffentlich unter `https://mail-mcp.example.net/marketplace.json` einsehbar. Git-Zugriff und Katalog enthalten nur das für diese Instanz erzeugte Plugin samt MCP-Adresse, kein User-Token und kein Verwaltungstoken. Beim Verbinden startet OAuth: Melden Sie sich mit Ihrem Mailstack-Konto an und wählen Sie ein aktives User-Token sowie die gewünschten Funktionen. Der Server stellt ein kurzlebiges OAuth-Token aus und prüft bei jedem MCP-Aufruf weiterhin die aktuellen Rechte des gewählten User-Tokens.
 
-Falls Codex keinen Authentifizierungsdialog anbietet, können Sie den MCP-Server direkt mit einer Umgebungsvariable registrieren. Der Name wird aus `PLUGIN_NAME` gebildet: `MAILSTACK_MCP_` plus Pluginname als Großbuchstaben mit Unterstrichen plus `_TOKEN`. Für `Mailstack MCP` lautet er `MAILSTACK_MCP_MAILSTACK_MCP_TOKEN`:
+Falls Ihr MCP-Client OAuth nicht unterstützt, können Sie den MCP-Server direkt mit einer Umgebungsvariable registrieren. Der Name wird aus `PLUGIN_NAME` gebildet: `MAILSTACK_MCP_` plus Pluginname als Großbuchstaben mit Unterstrichen plus `_TOKEN`. Für `Mailstack MCP` lautet er `MAILSTACK_MCP_MAILSTACK_MCP_TOKEN`:
 
 ```sh
 codex mcp add mailstack-mcp --url https://mail-mcp.example.net/mcp --bearer-token-env-var MAILSTACK_MCP_MAILSTACK_MCP_TOKEN
@@ -187,7 +187,7 @@ codex mcp add mailstack-mcp --url https://mail-mcp.example.net/mcp --bearer-toke
 
 Wenn Sie die Variable nach dem Start von Codex setzen, starten Sie Codex neu. Geben Sie das Token nicht im Chat oder als Befehlszeilenargument ein.
 
-Der Reverse-Proxy muss `/marketplace.json` und `/marketplace.git/` ohne zusätzliche Authentifizierung an die Anwendung weiterleiten. Das Nginx-Beispiel oben leitet bereits alle Pfade unter `/` weiter. `/plugin.zip` bleibt als öffentliche Kompatibilitätsadresse für bereits verteilte Links verfügbar; die Verwaltungsoberfläche bietet keinen ZIP-Download mehr an.
+Der Reverse-Proxy muss `/marketplace.json`, `/marketplace.git/` sowie die OAuth-Metadaten unter `/.well-known/` und `/oauth/` ohne zusätzliche Authentifizierung an die Anwendung weiterleiten. OAuth erfordert eine von außen erreichbare HTTPS-Adresse; die Proxy-Header für Protokoll und Host müssen korrekt gesetzt sein. Die Instanz unterstützt öffentliche OAuth-Clients über Dynamic Client Registration (DCR); CIMD und private Client-Secrets werden nicht verwendet. Ungenutzte Client-Registrierungen ohne Grants können nach 180 Tagen entfernt werden; abgelaufene Grant-Einträge bleiben 90 Tage für die Verwaltung sichtbar. Der Nginx-Beispielproxy oben leitet bereits alle Pfade unter `/` weiter. `/plugin.zip` bleibt als öffentliche Kompatibilitätsadresse für bereits verteilte Links verfügbar; die Verwaltungsoberfläche bietet keinen ZIP-Download mehr an.
 
 `APP_TITLE` passt den Namen der Verwaltungsoberfläche und der Anmeldecode-E-Mails an. Für ein Logo setzen Sie `APP_LOGO_FILENAME` auf einen Dateinamen im Unterordner `image` des Datenverzeichnisses; ohne Logo bleibt das Standardzeichen sichtbar. `PLUGIN_NAME` legt den Anzeigenamen des Plugins fest. Der Paketordner und die Plugin-ID werden daraus als kleingeschriebener ASCII-Name mit Bindestrichen abgeleitet.
 

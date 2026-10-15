@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <title>Zugriff freigeben · <%= appTitle %></title>
+  <link rel="stylesheet" href="/assets/app.css">
+  <link rel="stylesheet" href="/assets/typography.css">
+  <link rel="stylesheet" href="/assets/oauth-consent.css">
+</head>
+<body class="login-page">
+  <main class="login-shell oauth-shell">
+    <a class="brand" href="/tokens" aria-label="<%= appTitle %> Verwaltung">
+      <span class="brand-mark" aria-hidden="true">M</span>
+      <span><%= appTitle %></span>
+    </a>
+    <section class="login-card oauth-card" aria-labelledby="page-title">
+      <div class="eyebrow">OAUTH-FREIGABE</div>
+      <h1 id="page-title">Postfachzugriff erlauben?</h1>
+      <p class="muted"> <strong><%= clientName %></strong> möchte mit Ihrem Mailstack-Konto auf ausgewählte Funktionen zugreifen.</p>
+      <div class="oauth-account"><span class="status-dot" aria-hidden="true"></span><span>Angemeldet als</span><strong><%= username %></strong></div>
+      <% if (error) { %><div class="alert alert-error" role="alert"><%= error %></div><% } %>
+      <% if (tokens.length) { %>
+        <form method="post" action="/oauth/consent" autocomplete="off">
+          <input type="hidden" name="_csrf" value="<%= csrf %>">
+          <input type="hidden" name="request" value="<%= requestId %>">
+          <label for="oauth-user-token">Berechtigungen übernehmen von</label>
+          <select id="oauth-user-token" name="userTokenId" class="oauth-token-select" required>
+            <% tokens.forEach((token, index) => { %>
+              <option value="<%= token.id %>" <%= index === 0 ? 'selected' : '' %>><%= token.label %> — <%= token.enabledToolLabels.length ? token.enabledToolLabels.join(' · ') : 'keine Funktionen freigegeben' %></option>
+            <% }) %>
+          </select>
+          <p class="field-note">Das gewählte User-Token legt die maximalen Rechte fest. Änderungen und Widerruf dieses Tokens gelten auch für diese Verbindung.</p>
+          <fieldset class="oauth-scope-list">
+            <legend>Funktionen für diese Verbindung</legend>
+            <% scopes.forEach((scope) => { %>
+              <label class="oauth-scope-option"><input type="checkbox" name="scopes" value="<%= scope.value %>" checked><span><%= scope.label %></span></label>
+            <% }) %>
+          </fieldset>
+          <p class="field-note">Sie können den Zugriff hier weiter einschränken. Freigaben, die das gewählte User-Token nicht besitzt, werden nicht erteilt.</p>
+          <button class="button button-primary button-wide" type="submit">Zugriff freigeben</button>
+        </form>
+      <% } else { %>
+        <div class="empty-state oauth-empty">
+          <h2>Kein aktives User-Token</h2>
+          <p>Erstellen Sie in der Verwaltung ein User-Token mit den gewünschten Funktionen. Kehren Sie danach zu dieser Freigabe zurück.</p>
+          <a class="button button-secondary" href="/tokens#create-token">User-Token erstellen</a>
+        </div>
+      <% } %>
+      <form method="post" action="/oauth/consent/cancel" class="oauth-cancel-form">
+        <input type="hidden" name="_csrf" value="<%= csrf %>">
+        <input type="hidden" name="request" value="<%= requestId %>">
+        <button class="button button-secondary button-wide" type="submit">Abbrechen</button>
+      </form>
+      <p class="login-footnote"><span class="status-dot" aria-hidden="true"></span> Sie können diese Freigabe jederzeit in der Token-Verwaltung widerrufen.</p>
+    </section>
+    <p class="page-caption">Ihr Postfachzugriff bleibt an Ihr persönliches Konto gebunden.</p>
+  </main>
+</body>
+</html>

@@ -11,6 +11,7 @@ import { configureImapService } from './imap/client.js';
 import { configureSmtpService } from './smtp/sender.js';
 import { authenticateMcpRequest, principalFromAuthInfo } from './http/mcp-auth.js';
 import { buildMcpServer } from './mcp/server.js';
+import { createOAuthRouter } from './oauth/routes.js';
 
 /** Confirms the configured data path is an existing writable directory. */
 async function verifyDataDirectory(dataDir: string): Promise<void> {
@@ -44,9 +45,14 @@ async function main(): Promise<void> {
 
   const app = express();
   app.disable('x-powered-by');
+  app.set('trust proxy', 1);
   app.use(helmet());
   // Keep health checks independent of mailbox credentials and database state.
   app.get('/health', (_req, res) => res.status(200).json({ status: 'ok' }));
+  app.use(createOAuthRouter({
+    encryptionKey: config.encryptionKey,
+    smtpConfigured: Boolean(config.smtp),
+  }));
   // The auth middleware populates the verified principal before the SDK asks
   // for a server, so registrations are scoped to this request's token.
   // Build each MCP server from the principal authenticated for that request.

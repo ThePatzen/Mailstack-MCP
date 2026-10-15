@@ -1,4 +1,4 @@
-import type { McpServer } from '@modelcontextprotocol/server';
+import { requireScopes, type McpServer } from '@modelcontextprotocol/server';
 import * as z from 'zod/v4';
 import {
   copyMessage, deleteMessage, expungeMessages, getAttachment, listMessages, moveMessage,
@@ -30,6 +30,8 @@ export function registerMessageTools(server: McpServer, principal: McpPrincipal)
   if (principal.enabledTools.includes('list_messages')) {
     server.registerTool('list_messages', {
       description: 'List recent messages in a mailbox, newest first. Results are paged by UID.',
+      _meta: { securitySchemes: [{ type: 'oauth2', scopes: ['mailstack:list_messages'] }] },
+      scopeChallenge: requireScopes('mailstack:list_messages'),
       inputSchema: z.object({ mailbox, ...page }),
       outputSchema: z.object({ messages: z.array(summary) }),
       annotations: { readOnlyHint: true },
@@ -41,6 +43,8 @@ export function registerMessageTools(server: McpServer, principal: McpPrincipal)
   if (principal.enabledTools.includes('search_messages')) {
     server.registerTool('search_messages', {
       description: 'Search messages in a mailbox by sender, recipient, subject, text, date, unread, or flagged status.',
+      _meta: { securitySchemes: [{ type: 'oauth2', scopes: ['mailstack:search_messages'] }] },
+      scopeChallenge: requireScopes('mailstack:search_messages'),
       inputSchema: z.object({
         mailbox, ...page,
         criteria: z.object({
@@ -60,6 +64,8 @@ export function registerMessageTools(server: McpServer, principal: McpPrincipal)
   if (principal.enabledTools.includes('read_message')) {
     server.registerTool('read_message', {
       description: 'Read a message body and its attachment metadata by mailbox and UID. Attachment bytes are returned only by get_attachment.',
+      _meta: { securitySchemes: [{ type: 'oauth2', scopes: ['mailstack:read_message'] }] },
+      scopeChallenge: requireScopes('mailstack:read_message'),
       inputSchema: z.object({ mailbox, uid }),
       outputSchema: content,
       annotations: { readOnlyHint: true },
@@ -71,6 +77,8 @@ export function registerMessageTools(server: McpServer, principal: McpPrincipal)
   if (principal.enabledTools.includes('get_attachment')) {
     server.registerTool('get_attachment', {
       description: 'Retrieve one attachment by its MIME part ID. Returned base64 content is limited in size.',
+      _meta: { securitySchemes: [{ type: 'oauth2', scopes: ['mailstack:get_attachment'] }] },
+      scopeChallenge: requireScopes('mailstack:get_attachment'),
       inputSchema: z.object({ mailbox, uid, partId: z.string().regex(/^\d+(?:\.\d+)*$/).max(100) }),
       outputSchema: z.object({ filename: z.string().nullable(), contentType: z.string(), contentBase64: z.string() }),
       annotations: { readOnlyHint: true },
@@ -81,6 +89,8 @@ export function registerMessageTools(server: McpServer, principal: McpPrincipal)
   if (principal.enabledTools.includes('set_message_flags')) {
     server.registerTool('set_message_flags', {
       description: 'Set or clear the read and flagged status of a message.',
+      _meta: { securitySchemes: [{ type: 'oauth2', scopes: ['mailstack:set_message_flags'] }] },
+      scopeChallenge: requireScopes('mailstack:set_message_flags'),
       inputSchema: z.object({ mailbox, uid, flags: z.object({ seen: z.boolean().optional(), flagged: z.boolean().optional() }).strict()
         .refine((flags) => flags.seen !== undefined || flags.flagged !== undefined) }),
       outputSchema: changed,
@@ -94,6 +104,8 @@ export function registerMessageTools(server: McpServer, principal: McpPrincipal)
   if (principal.enabledTools.includes('copy_message')) {
     server.registerTool('copy_message', {
       description: 'Copy one message to another mailbox.',
+      _meta: { securitySchemes: [{ type: 'oauth2', scopes: ['mailstack:copy_message'] }] },
+      scopeChallenge: requireScopes('mailstack:copy_message'),
       inputSchema: z.object({ mailbox, uid, destination: mailbox }), outputSchema: changed,
       annotations: { destructiveHint: false },
     }, async ({ mailbox: folder, uid: messageUid, destination }) => toolCall(principal, 'copy_message', async () => {
@@ -105,6 +117,8 @@ export function registerMessageTools(server: McpServer, principal: McpPrincipal)
   if (principal.enabledTools.includes('move_message')) {
     server.registerTool('move_message', {
       description: 'Move one message to another mailbox.',
+      _meta: { securitySchemes: [{ type: 'oauth2', scopes: ['mailstack:move_message'] }] },
+      scopeChallenge: requireScopes('mailstack:move_message'),
       inputSchema: z.object({ mailbox, uid, destination: mailbox }), outputSchema: changed,
       annotations: { destructiveHint: true },
     }, async ({ mailbox: folder, uid: messageUid, destination }) => toolCall(principal, 'move_message', async () => {
@@ -116,6 +130,8 @@ export function registerMessageTools(server: McpServer, principal: McpPrincipal)
   if (principal.enabledTools.includes('delete_message')) {
     server.registerTool('delete_message', {
       description: 'Delete one message by moving it to the server Trash mailbox when available, or marking it deleted.',
+      _meta: { securitySchemes: [{ type: 'oauth2', scopes: ['mailstack:delete_message'] }] },
+      scopeChallenge: requireScopes('mailstack:delete_message'),
       inputSchema: z.object({ mailbox, uid }), outputSchema: changed,
       annotations: { destructiveHint: true },
     }, async ({ mailbox: folder, uid: messageUid }) => toolCall(principal, 'delete_message', async () => {
@@ -127,6 +143,8 @@ export function registerMessageTools(server: McpServer, principal: McpPrincipal)
   if (principal.enabledTools.includes('expunge_messages')) {
     server.registerTool('expunge_messages', {
       description: 'Permanently expunge messages already marked deleted in a mailbox. This action is separate from delete_message.',
+      _meta: { securitySchemes: [{ type: 'oauth2', scopes: ['mailstack:expunge_messages'] }] },
+      scopeChallenge: requireScopes('mailstack:expunge_messages'),
       inputSchema: z.object({ mailbox }), outputSchema: changed,
       annotations: { destructiveHint: true },
     }, async ({ mailbox: folder }) => toolCall(principal, 'expunge_messages', async () => {

@@ -3,13 +3,21 @@ import { Router, urlencoded, type Request, type Response } from 'express';
 import rateLimit, { ipKeyGenerator } from 'express-rate-limit';
 import { encryptSecret } from '../security/crypto.js';
 import { sendManagementLoginCode } from '../smtp/system-mail.js';
-import { consumeEmailLoginChallenge, createEmailLoginChallenge, invalidateEmailLoginChallenge, createOrUpdateAccount, createUserToken, deleteToken, findSession, getAccountCredentials, listTokens, revokeToken, setToolPermission } from '../storage/repository.js';
+import {
+  bindOAuthAuthorizationRequest, cancelOAuthAuthorizationRequest, consumeEmailLoginChallenge,
+  createEmailLoginChallenge, createOAuthAuthorizationCode, createOrUpdateAccount, createUserToken,
+  deleteToken, findOAuthAuthorizationRequest, findOAuthClient, findSession, getAccountCredentials,
+  invalidateEmailLoginChallenge, listTokens, revokeToken, setToolPermission,
+  listOAuthGrants, revokeOAuthGrant,
+} from '../storage/repository.js';
 import { createMailstackMarketplace, createMailstackPluginArchive, pluginPackageName, pluginTokenEnvironmentName } from './plugin-package.js';
 import { serveMarketplaceGit } from './marketplace-git.js';
 import { verifyImapLogin, verifyStaticToken } from './auth.js';
 import type { WebDependencies } from './app.js';
 import { createLoginCsrfToken, csrfToken, LOGIN_CSRF_COOKIE, requireCsrf, verifyLoginCsrfToken } from './csrf.js';
 import { destroyManagementSession, ManagementRequest, requireManagementSession, SESSION_COOKIE, SESSION_TTL_MS, createManagementSession } from './sessions.js';
+import { OAUTH_HANDOFF_COOKIE, readOAuthHandoffValue } from '../oauth/handoff.js';
+import { OAUTH_AUTHORIZATION_CODE_TTL_MS } from '../oauth/protocol.js';
 
 const TOOL_NAMES = [
   'list_mailboxes', 'create_mailbox', 'rename_mailbox', 'delete_mailbox',
@@ -111,6 +119,82 @@ function issueCookie(res: Response, sessionId: string): void {
   res.cookie(SESSION_COOKIE, sessionId, { ...COOKIE_OPTIONS, maxAge: SESSION_TTL_MS });
 }
 
+/** Returns the OAuth request identifier only when its browser handoff signature is valid. */
+function oauthHandoffRequestId(req: Request, deps: WebDependencies): string | null {
+  return readOAuthHandoffValue(readCookie(req, OAUTH_HANDOFF_COOKIE), deps.encryptionKey);
+}
+
+/** Resumes a signed OAuth authorization after login without accepting a caller-provided return URL. */
+function postLoginPath(req: Request, res: Response, deps: WebDependencies, accountId: string): string {
+  const requestId = oauthHandoffRequestId(req, deps);
+  if (!requestId) return '/tokens';
+  const pending = findOAuthAuthorizationRequest(requestId);
+  if (!pending || !bindOAuthAuthorizationRequest(requestId, accountId)) {
+    res.clearCookie(OAUTH_HANDOFF_COOKIE, COOKIE_OPTIONS);
+    return '/tokens';
+  }
+  return `/oauth/consent?request=${encodeURIComponent(requestId)}`;
+}
+
+interface OAuthConsentContext {
+  requestId: string;
+  accountId: string;
+  sessionId: string;
+  request: NonNullable<ReturnType<typeof findOAuthAuthorizationRequest>>;
+  clientName: string;
+}
+
+/** Resolves a pending consent screen only for the logged-in account and signed handoff cookie. */
+function oauthConsentContext(req: Request, deps: WebDependencies): OAuthConsentContext | null {
+  const management = (req as ManagementRequest).management;
+  const requestId = safeText(req.query.request, 43);
+  const cookieRequestId = oauthHandoffRequestId(req, deps);
+  if (!management?.accountId || !requestId || requestId !== cookieRequestId) return null;
+  const request = findOAuthAuthorizationRequest(requestId);
+  if (!request || request.accountId !== management.accountId) return null;
+  const client = findOAuthClient(request.clientId);
+  if (!client) return null;
+  return {
+    requestId,
+    accountId: management.accountId,
+    sessionId: management.sessionId,
+    request,
+    clientName: client.clientName,
+  };
+}
+
+/** Renders requested tools and active User-Tokens without exposing their secret values. */
+function renderOAuthConsent(
+  req: Request,
+  res: Response,
+  deps: WebDependencies,
+  context: OAuthConsentContext,
+  options: { error?: string; status?: number } = {},
+): void {
+  const username = getAccountCredentials(context.accountId)?.username ?? '';
+  const tokens = listTokens(context.accountId).filter((token) => token.revokedAt === null).map((token) => ({
+    id: token.id,
+    label: token.label,
+    enabledScopes: token.enabledTools.map((tool) => `mailstack:${tool}`),
+    enabledToolLabels: token.enabledTools.map((tool) => TOOL_LABELS[tool as keyof typeof TOOL_LABELS] ?? tool),
+  }));
+  const scopes = context.request.requestedScopes.map((scope) => {
+    const tool = scope.slice('mailstack:'.length) as keyof typeof TOOL_LABELS;
+    return { value: scope, label: TOOL_LABELS[tool] ?? tool };
+  });
+  setNoStore(res);
+  res.status(options.status ?? 200).render('oauth-consent', {
+    appTitle: deps.appTitle,
+    clientName: context.clientName,
+    username,
+    requestId: context.requestId,
+    tokens,
+    scopes,
+    csrf: csrfToken(context.sessionId, deps.encryptionKey),
+    error: options.error ?? '',
+  });
+}
+
 /** Builds the public MCP URL only from a valid HTTPS request host. */
 function publicMcpUrl(req: Request): string | undefined {
   const forwardedHost = req.get('x-forwarded-host')?.split(',')[0]?.trim();
@@ -140,6 +224,7 @@ function renderTokens(req: Request, res: Response, deps: WebDependencies, option
     appTitle: deps.appTitle,
     appLogoUrl: deps.appLogoPath ? '/brand/logo' : '',
     tokens: summaries,
+    oauthGrants: listOAuthGrants(accountId),
     toolNames: TOOL_NAMES.filter((tool) => tool !== 'send_email' || deps.smtpConfigured),
     toolLabels: TOOL_LABELS,
     csrf: csrfToken((req as ManagementRequest).management!.sessionId, deps.encryptionKey),
@@ -199,6 +284,12 @@ export function createManagementRouter(deps: WebDependencies): Router {
       const session = findSession(cookie);
       if (session) {
         request.management = { accountId: session.accountId, sessionId: cookie };
+        const oauthRequestId = safeText(req.query.oauth_request, 43);
+        if (oauthRequestId && oauthRequestId === oauthHandoffRequestId(req, deps) &&
+            bindOAuthAuthorizationRequest(oauthRequestId, session.accountId)) {
+          res.redirect(303, `/oauth/consent?request=${encodeURIComponent(oauthRequestId)}`);
+          return;
+        }
         res.redirect('/tokens');
         return;
       }
@@ -225,7 +316,7 @@ export function createManagementRouter(deps: WebDependencies): Router {
       const account = createOrUpdateAccount(username, encryptSecret(password, deps.encryptionKey));
       const sessionId = createManagementSession(account.id);
       issueCookie(res, sessionId);
-      res.redirect(303, '/tokens');
+      res.redirect(303, postLoginPath(req, res, deps, account.id));
     } catch {
       renderLogin(res, deps, { error: LOGIN_FAILED, username, method: 'token' });
     }
@@ -295,10 +386,98 @@ export function createManagementRouter(deps: WebDependencies): Router {
       const account = createOrUpdateAccount(credentials.username, credentials.encryptedPassword);
       const sessionId = createManagementSession(account.id);
       issueCookie(res, sessionId);
-      res.redirect(303, '/tokens');
+      res.redirect(303, postLoginPath(req, res, deps, account.id));
     } catch {
       renderLogin(res, deps, { error: LOGIN_FAILED, username, method: 'email' });
     }
+  });
+
+  // Show the registered OAuth client and the permissions of each available User-Token.
+  router.get('/oauth/consent', loggedIn, (req, res) => {
+    const context = oauthConsentContext(req, deps);
+    if (!context) {
+      res.clearCookie(OAUTH_HANDOFF_COOKIE, COOKIE_OPTIONS);
+      res.status(400).send('Die OAuth-Anfrage ist ungültig oder abgelaufen. Starten Sie die Verbindung erneut.');
+      return;
+    }
+    renderOAuthConsent(req, res, deps, context);
+  });
+
+  // Bind the OAuth grant to one active token and an explicit subset of its enabled tool scopes.
+  router.post('/oauth/consent', loggedIn, csrf, (req, res) => {
+    const context = oauthConsentContext(req, deps);
+    if (!context) {
+      res.clearCookie(OAUTH_HANDOFF_COOKIE, COOKIE_OPTIONS);
+      res.status(400).send('Die OAuth-Anfrage ist ungültig oder abgelaufen. Starten Sie die Verbindung erneut.');
+      return;
+    }
+    const userTokenId = safeText(req.body?.userTokenId, 64);
+    const rawScopes = req.body?.scopes;
+    const selectedScopes = rawScopes === undefined ? [] : Array.isArray(rawScopes)
+      ? rawScopes.filter((value: unknown): value is string => typeof value === 'string')
+      : typeof rawScopes === 'string' ? [rawScopes] : [];
+    const token = listTokens(context.accountId).find((candidate) => candidate.id === userTokenId && candidate.revokedAt === null);
+    const requestedScopes = new Set(context.request.requestedScopes);
+    const enabledScopes = new Set(token?.enabledTools.map((tool) => `mailstack:${tool}`) ?? []);
+    if (!token || !selectedScopes.length || new Set(selectedScopes).size !== selectedScopes.length ||
+        selectedScopes.some((scope) => !requestedScopes.has(scope) || !enabledScopes.has(scope))) {
+      renderOAuthConsent(req, res, deps, context, {
+        error: token ? 'Wählen Sie nur Funktionen, die für das ausgewählte User-Token freigegeben sind.' : 'Wählen Sie ein aktives User-Token für dieses Postfach aus.',
+        status: 400,
+      });
+      return;
+    }
+
+    const mcpUrl = publicMcpUrl(req);
+    if (!mcpUrl) {
+      renderOAuthConsent(req, res, deps, context, {
+        error: 'OAuth benötigt die öffentliche HTTPS-Adresse.',
+        status: 400,
+      });
+      return;
+    }
+    const code = createOAuthAuthorizationCode({
+      requestId: context.requestId,
+      accountId: context.accountId,
+      userTokenId,
+      grantedScopes: selectedScopes,
+      expiresAt: Date.now() + OAUTH_AUTHORIZATION_CODE_TTL_MS,
+    });
+    if (!code) {
+      renderOAuthConsent(req, res, deps, context, {
+        error: 'Die Freigabe konnte nicht erstellt werden. Starten Sie die Verbindung erneut.',
+        status: 400,
+      });
+      return;
+    }
+    const callback = new URL(context.request.redirectUri);
+    callback.searchParams.set('code', code);
+    callback.searchParams.set('state', context.request.state);
+    callback.searchParams.set('iss', new URL(mcpUrl).origin);
+    res.clearCookie(OAUTH_HANDOFF_COOKIE, COOKIE_OPTIONS);
+    res.redirect(303, callback.toString());
+  });
+
+  // Return an access-denied response only through the callback registered for this client.
+  router.post('/oauth/consent/cancel', loggedIn, csrf, (req, res) => {
+    const context = oauthConsentContext(req, deps);
+    const mcpUrl = publicMcpUrl(req);
+    if (!context || !mcpUrl) {
+      res.clearCookie(OAUTH_HANDOFF_COOKIE, COOKIE_OPTIONS);
+      res.status(400).send('Die OAuth-Anfrage ist ungültig oder abgelaufen. Starten Sie die Verbindung erneut.');
+      return;
+    }
+    if (!cancelOAuthAuthorizationRequest(context.requestId, context.accountId)) {
+      res.clearCookie(OAUTH_HANDOFF_COOKIE, COOKIE_OPTIONS);
+      res.status(400).send('Die OAuth-Anfrage ist ungültig oder abgelaufen. Starten Sie die Verbindung erneut.');
+      return;
+    }
+    const callback = new URL(context.request.redirectUri);
+    callback.searchParams.set('error', 'access_denied');
+    callback.searchParams.set('state', context.request.state);
+    callback.searchParams.set('iss', new URL(mcpUrl).origin);
+    res.clearCookie(OAUTH_HANDOFF_COOKIE, COOKIE_OPTIONS);
+    res.redirect(303, callback.toString());
   });
 
   // Load token data only after session middleware has identified the account.
@@ -311,7 +490,7 @@ export function createManagementRouter(deps: WebDependencies): Router {
       return;
     }
     managementReq.accountUsername = account.username;
-    const queryNotice = req.query.notice === 'revoked' ? 'Token widerrufen.' : req.query.notice === 'deleted' ? 'Token dauerhaft gelöscht.' : req.query.notice === 'unchanged' ? 'Token war bereits widerrufen oder wurde nicht gefunden.' : '';
+    const queryNotice = req.query.notice === 'revoked' ? 'Token widerrufen.' : req.query.notice === 'deleted' ? 'Token dauerhaft gelöscht.' : req.query.notice === 'oauth-revoked' ? 'OAuth-Verbindung widerrufen.' : req.query.notice === 'unchanged' ? 'Token war bereits widerrufen oder wurde nicht gefunden.' : '';
     renderTokens(req, res, deps, {
       notice: queryNotice,
       openPermissionsTokenId: safeText(req.query.openPermissions, 64),
@@ -356,6 +535,17 @@ export function createManagementRouter(deps: WebDependencies): Router {
     const management = (req as ManagementRequest).management!;
     const revoked = revokeToken(management.accountId, safeText(req.params.tokenId, 64));
     res.redirect(303, `/tokens?notice=${revoked ? 'revoked' : 'unchanged'}`);
+  });
+
+  // Revoke one OAuth grant only within the current account and its selected parent token.
+  router.post('/tokens/:tokenId/oauth-grants/:grantId/revoke', loggedIn, csrf, (req, res) => {
+    const management = (req as ManagementRequest).management!;
+    const revoked = revokeOAuthGrant(
+      management.accountId,
+      safeText(req.params.tokenId, 64),
+      safeText(req.params.grantId, 64),
+    );
+    res.redirect(303, `/tokens?notice=${revoked ? 'oauth-revoked' : 'unchanged'}`);
   });
 
   // Delete only a revoked token belonging to the current account.
