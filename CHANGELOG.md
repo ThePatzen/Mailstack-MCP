@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.1.7] - 2026-10-15
+
+### Added
+- OAuth clients can request rotating refresh tokens for long-lived authorization grants.
+
+### Changed
+- Access tokens expire after one hour; refresh-token replay revokes the associated grant.
+
 ## [0.1.6] - 2026-10-15
 
 ### Changed
