@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.1.4] - 2026-10-15
+
+### Added
+- OAuth-Anmeldung für MCP mit PKCE; Nutzer wählen ein bestehendes User-Token und dessen erlaubte Funktionen.
+- OAuth-Verbindungen lassen sich einzeln in der Token-Verwaltung widerrufen.
+
+### Changed
+- Das Codex-Plugin nutzt OAuth. Direkte Bearer-Token-Konfiguration bleibt als Alternative verfügbar.
+
 ## [0.1.3] - 2026-10-15
 
 ### Added
