@@ -135,7 +135,15 @@ export function createOAuthRouter(dependencies: OAuthRouteDependencies): Router 
     } catch (error) {
       const protocolError = error instanceof OAuthProtocolError
         ? error : new OAuthProtocolError('invalid_client_metadata', 'The client metadata is invalid.');
-      res.status(protocolError.code === 'server_error' ? 503 : 400)
+      const status = protocolError.code === 'server_error' ? 503 : 400;
+      // Keep registration diagnostics useful without logging client-supplied metadata.
+      process.stderr.write(`${JSON.stringify({
+        event: 'oauth_client_registration_rejected',
+        status,
+        code: protocolError.code,
+        reason: error instanceof OAuthProtocolError ? protocolError.message : 'Unexpected client registration error.',
+      })}\n`);
+      res.status(status)
         .json({ error: protocolError.code, error_description: protocolError.message });
     }
   });

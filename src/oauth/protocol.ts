@@ -111,12 +111,17 @@ export function registerPublicClient(metadata: unknown): OAuthClient {
     throw new OAuthProtocolError('invalid_client_metadata', 'Client metadata must be a JSON object.');
   }
   const input = metadata as Record<string, unknown>;
+  if (input.client_name !== undefined && typeof input.client_name !== 'string') {
+    throw new OAuthProtocolError('invalid_client_metadata', 'The client_name is invalid.');
+  }
   const clientName = typeof input.client_name === 'string' ? input.client_name.trim() : 'MCP client';
+  if (!clientName || clientName.length > 100 || /[\r\n\0]/.test(clientName)) {
+    throw new OAuthProtocolError('invalid_client_metadata', 'The client_name is invalid.');
+  }
   const redirectUris = input.redirect_uris;
-  if (!clientName || clientName.length > 100 || /[\r\n\0]/.test(clientName) ||
-      !Array.isArray(redirectUris) || redirectUris.length < 1 || redirectUris.length > 16 ||
+  if (!Array.isArray(redirectUris) || redirectUris.length < 1 || redirectUris.length > 16 ||
       !redirectUris.every(validRedirectUri) || new Set(redirectUris).size !== redirectUris.length) {
-    throw new OAuthProtocolError('invalid_client_metadata', 'The client name or redirect URI list is invalid.');
+    throw new OAuthProtocolError('invalid_client_metadata', 'The redirect_uris list is invalid.');
   }
   if (input.token_endpoint_auth_method !== undefined && input.token_endpoint_auth_method !== 'none') {
     throw new OAuthProtocolError('invalid_client_metadata', 'Only public OAuth clients are supported.');
