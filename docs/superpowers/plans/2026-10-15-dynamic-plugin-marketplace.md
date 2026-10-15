@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Let users install a Mailstack plugin from their own Codex instance while keeping a direct MCP configuration option and exposing the marketplace without authentication.
+**Goal:** Let users install a Mailstack plugin from their own Codex instance, connect the same MCP service in ChatGPT, keep a direct Codex configuration option, and expose the marketplace without authentication.
 
 **Architecture:** Generate the plugin files and marketplace catalog from the request's validated HTTPS origin. Serve a bounded, temporary Git repository through Git Smart HTTP for Codex installation, expose the catalog as `/marketplace.json`, and keep `/plugin.zip` public for old links while removing it from the UI.
 
@@ -36,7 +36,8 @@
 - Modify: `src/web/plugin-package.ts`
 
 **Interfaces:**
-- Produces `createMailstackPluginFiles(mcpUrl: string, pluginName: string): Array<{ name: string; data: Buffer }>` with paths rooted at the plugin directory (`plugin.json`, `mcp.json`, `skills/setup/SKILL.md`, and `INSTALL.md`).
+- Produces `createMailstackPluginFiles(mcpUrl: string, pluginName: string, options?: { includeMcpConfig?: boolean }): Array<{ name: string; data: Buffer }>` with paths rooted at the plugin directory; both the compatibility ZIP and marketplace package include `mcp.json` with bearer API-key authentication.
+- Produces `pluginTokenEnvironmentName(pluginName: string)` as `MAILSTACK_MCP_<PLUGINNAME>_TOKEN`, where the normalized plugin slug is uppercase with underscores.
 - Produces `createMailstackMarketplace(marketplaceGitUrl: string, pluginName: string)` with `{ name: pluginPackageName(pluginName), interface: { displayName: pluginName }, plugins: [{ name: pluginPackageName(pluginName), source: { source: 'url', url: marketplaceGitUrl }, policy: { installation: 'AVAILABLE', authentication: 'ON_INSTALL' }, category: 'Productivity' }] }`.
 - Preserves `createMailstackPluginArchive(mcpUrl: string, pluginName: string): Buffer` and `pluginPackageName(pluginName: string): string` as the existing public interfaces.
 
@@ -68,7 +69,7 @@
 - [x] Install Git in the final Docker image so `git http-backend` is available to the non-root Node process.
 - [x] Run local TypeScript checking and focused artifact/clone checks. Docker image build and HTTP listener checks remain unavailable in this sandbox.
 
-### Task 3: Replace ZIP instructions with two Codex setup paths
+### Task 3: Replace ZIP instructions with ChatGPT and Codex setup paths
 
 **Files:**
 - Modify: `src/web/views/tokens.ejs`
@@ -79,10 +80,10 @@
 - The token view continues to receive `mcpUrl` and `pluginName` from `renderTokens`.
 - The marketplace link is the absolute same-origin URL `/marketplace.json`; the Codex command uses the same origin with `/marketplace.git`.
 
-- [x] Replace the ZIP download/install steps with two labeled sections: direct MCP configuration and Codex Marketplace installation.
-- [x] Show the existing Codex MCP TOML shape with the dynamic endpoint and `MAILSTACK_MCP_TOKEN`; explain setting the user token in Codex's environment without placing the token in the page's generated configuration.
+- [x] Replace the ZIP download/install steps with ChatGPT custom MCP setup, direct Codex configuration, and Codex Marketplace installation.
+- [x] Show the Codex MCP TOML shape with the dynamic endpoint and plugin-name-derived token variable; explain setting the user token in Codex's environment without placing the token in generated configuration.
 - [x] Link `/marketplace.json` for direct viewing and provide `codex plugin marketplace add https://<instance>/marketplace.git`, then explain opening `/plugins` and installing the listed Mailstack plugin.
-- [x] Explain that the plugin contains the instance URL but no token, and Codex requests the User-Token when connecting.
+- [x] Explain that the Marketplace package contains the instance URL and bearer-auth configuration without a token, and requests the User-Token during installation; also document ChatGPT's direct custom MCP setup.
 - [x] Remove ZIP-specific UI copy and update README instructions for the public catalog/Git endpoints, direct setup option, public `/plugin.zip` compatibility, and reverse-proxy forwarding without additional authentication.
 - [x] Render the EJS view with representative instance data, check its two setup options and responsive two-column CSS, and run local TypeScript checking.
 

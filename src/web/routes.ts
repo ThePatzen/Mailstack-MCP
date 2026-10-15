@@ -4,7 +4,7 @@ import rateLimit, { ipKeyGenerator } from 'express-rate-limit';
 import { encryptSecret } from '../security/crypto.js';
 import { sendManagementLoginCode } from '../smtp/system-mail.js';
 import { consumeEmailLoginChallenge, createEmailLoginChallenge, invalidateEmailLoginChallenge, createOrUpdateAccount, createUserToken, deleteToken, findSession, getAccountCredentials, listTokens, revokeToken, setToolPermission } from '../storage/repository.js';
-import { createMailstackMarketplace, createMailstackPluginArchive, pluginPackageName } from './plugin-package.js';
+import { createMailstackMarketplace, createMailstackPluginArchive, pluginPackageName, pluginTokenEnvironmentName } from './plugin-package.js';
 import { serveMarketplaceGit } from './marketplace-git.js';
 import { verifyImapLogin, verifyStaticToken } from './auth.js';
 import type { WebDependencies } from './app.js';
@@ -148,6 +148,8 @@ function renderTokens(req: Request, res: Response, deps: WebDependencies, option
     labelValue: options.labelValue ?? '',
     mcpUrl: publicMcpUrl(req) ?? '',
     pluginName: deps.pluginName,
+    mcpServerName: pluginPackageName(deps.pluginName),
+    mcpTokenEnvironmentName: pluginTokenEnvironmentName(deps.pluginName),
     openPermissionsTokenId: options.openPermissionsTokenId ?? '',
   });
 }

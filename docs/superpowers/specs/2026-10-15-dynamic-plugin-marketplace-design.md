@@ -2,7 +2,7 @@
 
 ## Ziel
 
-Nutzer sollen Mailstack MCP direkt aus Codex installieren können, ohne ein ZIP manuell herunterzuladen. Jede Installation muss auf genau die Mailstack-Instanz zeigen, von der aus der Marketplace aufgerufen wurde. Der Marketplace und sein Pluginpaket sind öffentlich abrufbar; ein User-Token wird erst bei der MCP-Verbindung eingegeben.
+Nutzer sollen Mailstack MCP direkt aus Codex installieren können, ohne ein ZIP manuell herunterzuladen, und dieselbe MCP-Instanz in ChatGPT verbinden können. Jede Installation muss auf genau die Mailstack-Instanz zeigen, von der aus der Marketplace aufgerufen wurde. Marketplace und Pluginpaket sind öffentlich abrufbar; User-Tokens werden nur vom MCP-Server als Bearer-Authentifizierung verwendet.
 
 Auf der Token-Verwaltungsseite ersetzt eine Anleitung mit zwei Wegen den bisherigen ZIP-Download:
 
@@ -40,7 +40,9 @@ Codex-Marktplätze beziehen Plugins aus lokalen, Git- oder npm-Quellen. Ein geho
 ### Plugin-Authentifizierung
 
 - Das Paket enthält die öffentliche MCP-URL, aber kein Token.
-- Codex fragt beim Verbinden nach dem persönlichen User-Token und sendet es als Bearer-Token.
+- Das Marketplace-Paket enthält eine `mcp.json` mit der öffentlichen MCP-URL und Bearer-API-Key-Authentifizierung. `policy.authentication` steht auf `ON_INSTALL`, damit Codex das User-Token bei der Plugin-Installation abfragt.
+- ChatGPT wird über „Add custom MCP server“ mit derselben öffentlichen MCP-URL und dem User-Token als Bearer-API-Key verbunden. Benutzerdefinierte MCP-Apps hängen von ChatGPT-Plan und Workspace-Einstellungen ab.
+- Für die direkte Codex-Konfiguration lautet der Variablenname `MAILSTACK_MCP_<PLUGINNAME>_TOKEN`; `<PLUGINNAME>` ist der normalisierte Pluginname in Großbuchstaben mit Unterstrichen (zum Beispiel `MAILSTACK_MCP_MAILSTACK_MCP_TOKEN`).
 - Das statische Verwaltungstoken wird weder in Plugin-Dateien noch in Marketplace-Metadaten verwendet.
 - Die serverseitige Token- und Tool-Berechtigungsprüfung bleibt unverändert.
 
@@ -48,8 +50,8 @@ Codex-Marktplätze beziehen Plugins aus lokalen, Git- oder npm-Quellen. Ein geho
 
 Die bisherige dreistufige ZIP-Anleitung wird durch zwei klar getrennte Konfigurationswege ersetzt:
 
-- **MCP direkt konfigurieren:** zeigt die öffentliche MCP-URL und eine kopierbare Codex-TOML-Konfiguration mit `bearer_token_env_var`; erklärt, wo der User-Token gesetzt wird.
-- **Marketplace verwenden:** verlinkt `/marketplace.json` zur Einsicht und zeigt den Befehl `codex plugin marketplace add https://<Instanz>/marketplace.git`. Anschließend erklärt die Seite, wie das Plugin im Codex-Plugin-Browser (`/plugins`) installiert wird und dass Codex beim ersten Verbinden nach dem User-Token fragt.
+- **ChatGPT oder Codex direkt verbinden:** zeigt die MCP-URL, erklärt ChatGPTs benutzerdefinierten MCP-Server und bietet die Codex-TOML-Konfiguration mit `bearer_token_env_var` als Alternative.
+- **Marketplace in Codex verwenden:** verlinkt `/marketplace.json` zur Einsicht und zeigt den Befehl `codex plugin marketplace add https://<Instanz>/marketplace.git`. Die Installation des Plugins bindet den MCP-Server ein und fragt nach dem User-Token.
 
 Der ZIP-Button und Hinweise auf manuelles Entpacken verschwinden aus der Oberfläche. `/plugin.zip` bleibt als öffentliche Kompatibilitätsroute bestehen.
 
@@ -71,11 +73,11 @@ README und Token-Verwaltungsoberfläche werden auf die zwei Installationswege ak
 
 - `/marketplace.json` ist ohne Management-Anmeldung erreichbar, valides JSON und verweist auf den Git-Marktplatz derselben HTTPS-Origin.
 - Codex kann das Repository über Git Smart HTTP klonen und findet darin einen gültigen Marketplace-Katalog sowie das Pluginpaket.
-- Das installierte MCP-Manifest enthält die URL der aufrufenden Mailstack-Instanz und kein User- oder Verwaltungstoken.
+- Das installierte MCP-Manifest enthält die URL der aufrufenden Mailstack-Instanz und die Bearer-API-Key-Authentifizierung, aber kein User- oder Verwaltungstoken.
 - Git-Schreibzugriffe und andere Repositorypfade sind nicht verfügbar.
 - `PLUGIN_NAME` mit gültigen und ungültigen Zeichenfolgen folgt weiterhin den bestehenden Slug- und Validierungsregeln.
 - `/plugin.zip` bleibt erreichbar, erfordert aber keine Management-Anmeldung.
-- Die Token-Seite bietet nur die direkte MCP-Konfiguration und die Codex-Marketplace-Installation als Anleitungen; der ZIP-Download wird dort nicht angeboten.
+- Die Token-Seite erklärt ChatGPTs direkte MCP-Verbindung, direkte Codex-Konfiguration und Codex-Marketplace-Installation; der ZIP-Download wird dort nicht angeboten.
 - README und Nginx-Hinweise beschreiben die öffentlichen Endpunkte und die erforderliche Proxy-Weiterleitung korrekt.
 
 ## Außerhalb des Umfangs

@@ -158,20 +158,34 @@ Der MCP-Server stellt einen Streamable-HTTP-Endpunkt unter `https://mail-mcp.exa
 Fügen Sie in `~/.codex/config.toml` folgenden Eintrag ein und ersetzen Sie die Beispiel-URL durch Ihre öffentliche HTTPS-Adresse:
 
 ```toml
-[mcp_servers.mailstack]
+[mcp_servers.mailstack-mcp]
 url = "https://mail-mcp.example.net/mcp"
-bearer_token_env_var = "MAILSTACK_MCP_TOKEN"
+bearer_token_env_var = "MAILSTACK_MCP_MAILSTACK_MCP_TOKEN"
 ```
 
-Setzen Sie `MAILSTACK_MCP_TOKEN` in der Umgebung, in der Codex gestartet wird, auf das zuvor erzeugte User-Token. Speichern Sie das Token nicht direkt in der TOML-Datei. Starten Sie Codex neu, damit die Konfiguration geladen wird. Weitere Informationen stehen in der [Codex MCP-Dokumentation](https://learn.chatgpt.com/docs/extend/mcp?surface=cli) und der [Codex-Konfigurationsreferenz](https://learn.chatgpt.com/docs/config-file/config-reference).
+Setzen Sie `MAILSTACK_MCP_MAILSTACK_MCP_TOKEN` in der Umgebung, in der Codex gestartet wird, auf das zuvor erzeugte User-Token. Der Variablenname wird aus `PLUGIN_NAME` gebildet: `MAILSTACK_MCP_` plus Pluginname als Großbuchstaben mit Unterstrichen plus `_TOKEN`. Für den Standardnamen `Mailstack MCP` lautet er daher `MAILSTACK_MCP_MAILSTACK_MCP_TOKEN`. Speichern Sie das Token nicht direkt in der TOML-Datei. Starten Sie Codex neu, damit die Konfiguration geladen wird. Weitere Informationen stehen in der [Codex MCP-Dokumentation](https://learn.chatgpt.com/docs/extend/mcp?surface=cli) und der [Codex-Konfigurationsreferenz](https://learn.chatgpt.com/docs/config-file/config-reference).
 
-Alternativ können Sie den dynamisch erzeugten Marketplace Ihrer Instanz in Codex hinzufügen:
+### ChatGPT verbinden
+
+In ChatGPT öffnen Sie **Einstellungen → Apps → Erstellen** und fügen einen benutzerdefinierten MCP-Server hinzu. Verwenden Sie `https://mail-mcp.example.net/mcp`, wählen Sie API-Key-Authentifizierung mit Bearer-Schema und geben Sie Ihr persönliches User-Token ein. Scannen Sie die Tools und erstellen Sie die App. Die Verfügbarkeit benutzerdefinierter MCP-Apps hängt vom ChatGPT-Plan und den Workspace-Einstellungen ab. Details stehen in der [ChatGPT-MCP-Dokumentation](https://help.openai.com/en/articles/12584461-developer-mode-and-full-mcp-connectors-in-chatgpt).
+
+### Marketplace-Plugin in Codex installieren
+
+Fügen Sie den dynamisch erzeugten Marketplace Ihrer Instanz in Codex hinzu:
 
 ```sh
 codex plugin marketplace add https://mail-mcp.example.net/marketplace.git
 ```
 
-Öffnen Sie anschließend in Codex `/plugins` und installieren Sie das Mailstack-Plugin aus diesem Marketplace. Der Marketplace-Katalog ist öffentlich unter `https://mail-mcp.example.net/marketplace.json` einsehbar. Git-Zugriff und Katalog enthalten nur das für diese Instanz erzeugte Plugin samt MCP-Adresse, kein User-Token und kein Verwaltungstoken. Beim Verbinden geben Sie das persönliche User-Token ein.
+Öffnen Sie anschließend in Codex `/plugins` und installieren Sie das Mailstack-Plugin aus diesem Marketplace. Der Marketplace-Katalog ist öffentlich unter `https://mail-mcp.example.net/marketplace.json` einsehbar. Git-Zugriff und Katalog enthalten nur das für diese Instanz erzeugte Plugin samt MCP-Adresse, kein User-Token und kein Verwaltungstoken. Bei der Plugin-Installation geben Sie Ihr persönliches User-Token im Authentifizierungsdialog ein; der MCP-Server sendet es als Bearer-Token.
+
+Falls Codex keinen Authentifizierungsdialog anbietet, können Sie den MCP-Server direkt mit einer Umgebungsvariable registrieren. Der Name wird aus `PLUGIN_NAME` gebildet: `MAILSTACK_MCP_` plus Pluginname als Großbuchstaben mit Unterstrichen plus `_TOKEN`. Für `Mailstack MCP` lautet er `MAILSTACK_MCP_MAILSTACK_MCP_TOKEN`:
+
+```sh
+codex mcp add mailstack-mcp --url https://mail-mcp.example.net/mcp --bearer-token-env-var MAILSTACK_MCP_MAILSTACK_MCP_TOKEN
+```
+
+Wenn Sie die Variable nach dem Start von Codex setzen, starten Sie Codex neu. Geben Sie das Token nicht im Chat oder als Befehlszeilenargument ein.
 
 Der Reverse-Proxy muss `/marketplace.json` und `/marketplace.git/` ohne zusätzliche Authentifizierung an die Anwendung weiterleiten. Das Nginx-Beispiel oben leitet bereits alle Pfade unter `/` weiter. `/plugin.zip` bleibt als öffentliche Kompatibilitätsadresse für bereits verteilte Links verfügbar; die Verwaltungsoberfläche bietet keinen ZIP-Download mehr an.
 

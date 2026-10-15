@@ -79,10 +79,16 @@ export function pluginPackageName(pluginName: string): string {
   return slug;
 }
 
+/** Derives the bearer-token environment variable from the configured plugin name. */
+export function pluginTokenEnvironmentName(pluginName: string): string {
+  return `MAILSTACK_MCP_${pluginPackageName(pluginName).replace(/-/g, '_').toUpperCase()}_TOKEN`;
+}
+
 /** Generates the plugin files at their root paths for ZIP and Git marketplace packaging. */
-export function createMailstackPluginFiles(mcpUrl: string, pluginName: string): ZipEntry[] {
+export function createMailstackPluginFiles(mcpUrl: string, pluginName: string, options: { includeMcpConfig?: boolean } = {}): ZipEntry[] {
   const origin = new URL(mcpUrl).origin;
   const packageName = pluginPackageName(pluginName);
+  const tokenEnvironmentName = pluginTokenEnvironmentName(pluginName);
   const pluginJson = {
     $schema: 'https://agent-plugins.org/schemas/1.0.0/plugin.schema.json',
     name: packageName,
@@ -130,9 +136,19 @@ description: Erklärt die Verbindung mit dem persönlichen ${pluginName}-Server.
 
 Der Server-Endpunkt dieses Plugins ist \`${mcpUrl}\`.
 
-Bei der Verbindung fragt Codex oder die ChatGPT-Desktop-App nach einem API-Key. Fügen Sie dort ein persönliches **User-Token** aus der Verwaltungsoberfläche ein. Der Server verwendet dieses Token als Bearer-Token und beschränkt den Zugriff auf die dafür freigegebenen Funktionen.
+Bei der Plugin-Installation fragt Codex nach dem persönlichen User-Token für den enthaltenen MCP-Server. Verwenden Sie nicht das statische Verwaltungstoken. Das Token ist nicht Teil der Plugin-Dateien und wird nicht an den öffentlichen Marketplace übertragen.
 
-Geben Sie das Token niemals in den Chat ein und speichern Sie es nicht in Plugin-Dateien. Wenn Sie den Wert verloren haben, erstellen Sie in der Verwaltung ein neues Token und widerrufen Sie das alte.
+1. Erstellen Sie in der Verwaltungsoberfläche ein persönliches **User-Token**. Verwenden Sie nicht das statische Verwaltungstoken.
+2. Installieren Sie das Plugin aus dem Marketplace. Geben Sie das User-Token im Authentifizierungsdialog für den MCP-Server ein.
+3. Wenn Sie Codex ohne Marketplace-Plugin direkt verbinden möchten, setzen Sie das User-Token lokal als Umgebungsvariable \`${tokenEnvironmentName}\` und tragen Sie Folgendes in \`~/.codex/config.toml\` ein:
+
+\`\`\`toml
+[mcp_servers.${packageName}]
+url = "${mcpUrl}"
+bearer_token_env_var = "${tokenEnvironmentName}"
+\`\`\`
+
+Geben Sie das Token niemals im Chat oder als Befehlszeilenargument ein und speichern Sie es nicht in Plugin-Dateien oder \`config.toml\`. Wenn Sie den Wert verloren haben, erstellen Sie in der Verwaltung ein neues Token und widerrufen Sie das alte.
 
 Das statische Verwaltungstoken wird ausschließlich für die Anmeldung auf \`${origin}\` benötigt. Es funktioniert nicht als MCP-Zugang.
 `;
@@ -151,19 +167,20 @@ codex plugin marketplace add ${marketplaceUrl}
 
 Öffnen Sie in Codex \`/plugins\` und installieren Sie ${pluginName} aus diesem Marketplace.
 
-## ChatGPT-Desktop-App
+Die Plugin-Installation bindet den MCP-Server ein und fragt nach dem persönlichen User-Token. Verwenden Sie nicht das statische Verwaltungstoken.
 
-Öffnen Sie **Plugins**, fügen Sie den Git-Marketplace \`${marketplaceUrl}\` hinzu und installieren Sie ${pluginName} aus der Liste.
+## ChatGPT
 
-Beim ersten Verbinden fragt Codex nach einem persönlichen User-Token. Erstellen und verwalten Sie dieses Token unter \`${origin}\`. Das statische Verwaltungstoken ist dafür nicht geeignet.
+Öffnen Sie in ChatGPT **Einstellungen → Apps → Erstellen** und fügen Sie einen benutzerdefinierten MCP-Server hinzu. Verwenden Sie die Server-Adresse \`${mcpUrl}\`, wählen Sie API-Key-Authentifizierung mit Bearer-Schema und geben Sie Ihr persönliches User-Token ein. Scannen Sie die Tools und erstellen Sie die App; falls ChatGPT die Option anbietet, wählen Sie **Create as a plugin**. Die Verfügbarkeit hängt von den ChatGPT-Plan- und Workspace-Einstellungen für benutzerdefinierte MCP-Apps ab.
 `;
 
-  return [
+  const files = [
     jsonEntry('plugin.json', pluginJson),
-    jsonEntry('mcp.json', mcpJson),
     { name: 'skills/setup/SKILL.md', data: Buffer.from(setupSkill, 'utf8') },
     { name: 'INSTALL.md', data: Buffer.from(installGuide, 'utf8') },
   ];
+  if (options.includeMcpConfig !== false) files.splice(1, 0, jsonEntry('mcp.json', mcpJson));
+  return files;
 }
 
 /** Creates a Codex marketplace catalog whose plugin source is the instance's Git endpoint. */
