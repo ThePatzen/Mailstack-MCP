@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.1.3] - 2026-10-15
+
+### Added
+- Einrichtungsanleitung für ChatGPT und Codex; die Codex-Token-Umgebungsvariable wird aus `PLUGIN_NAME` abgeleitet.
+
+### Fixed
+- Das Marketplace-Plugin bündelt wieder die MCP-Konfiguration und fordert das User-Token bei der Installation an.
+
 ## [0.1.2] - 2026-10-15
 
 ### Added
