@@ -109,7 +109,7 @@ Die folgenden Einstellungen sind in `.env.example` vorbereitet:
 | `DATA_DIR` | Host-Verzeichnis für persistente SQLite-Daten | `./data` |
 | `APP_TITLE` | Name in Seitentiteln, Kopfbereich und Anmeldecode-E-Mails | `Mailstack MCP` |
 | `APP_LOGO_FILENAME` | Optionaler Bilddateiname in `DATA_DIR/image/`; PNG, JPEG, WebP, GIF oder ICO | nicht gesetzt (M-Symbol) |
-| `PLUGIN_NAME` | Anzeigename des herunterladbaren Plugins; die Paket-ID wird daraus erzeugt | `Mailstack MCP` |
+| `PLUGIN_NAME` | Anzeigename des Codex-Marketplace-Plugins; die Paket-ID wird daraus erzeugt | `Mailstack MCP` |
 | `APP_PORT` | Nur auf Loopback veröffentlichter Host-Port | `3000` |
 | `SMTP_HOST` | SMTP-/Submission-Host; aktiviert den Mailversand, wenn gesetzt | nicht gesetzt |
 | `SMTP_PORT` | SMTP-Port | `465` bei `implicit`, `587` bei `starttls` |
@@ -165,9 +165,17 @@ bearer_token_env_var = "MAILSTACK_MCP_TOKEN"
 
 Setzen Sie `MAILSTACK_MCP_TOKEN` in der Umgebung, in der Codex gestartet wird, auf das zuvor erzeugte User-Token. Speichern Sie das Token nicht direkt in der TOML-Datei. Starten Sie Codex neu, damit die Konfiguration geladen wird. Weitere Informationen stehen in der [Codex MCP-Dokumentation](https://learn.chatgpt.com/docs/extend/mcp?surface=cli) und der [Codex-Konfigurationsreferenz](https://learn.chatgpt.com/docs/config-file/config-reference).
 
-Alternativ bietet die Token-Verwaltung nach der Anmeldung einen Download für ein installierbares Plugin der ChatGPT-Desktop-App und Codex. Das Paket enthält die beim Download verwendete HTTPS-Adresse, aber keine Zugangsdaten. Geben Sie beim Verbinden das User-Token ein und installieren Sie das Paket anhand der enthaltenen `INSTALL.md`-Anleitung über einen persönlichen Marketplace.
+Alternativ können Sie den dynamisch erzeugten Marketplace Ihrer Instanz in Codex hinzufügen:
 
-`APP_TITLE` passt den Namen der Verwaltungsoberfläche und der Anmeldecode-E-Mails an. Für ein Logo setzen Sie `APP_LOGO_FILENAME` auf einen Dateinamen im Unterordner `image` des Datenverzeichnisses; ohne Logo bleibt das Standardzeichen sichtbar. `PLUGIN_NAME` legt den Anzeigenamen des herunterladbaren Plugins fest. Der Paketordner und die Plugin-ID werden daraus als kleingeschriebener ASCII-Name mit Bindestrichen abgeleitet.
+```sh
+codex plugin marketplace add https://mail-mcp.example.net/marketplace.git
+```
+
+Öffnen Sie anschließend in Codex `/plugins` und installieren Sie das Mailstack-Plugin aus diesem Marketplace. Der Marketplace-Katalog ist öffentlich unter `https://mail-mcp.example.net/marketplace.json` einsehbar. Git-Zugriff und Katalog enthalten nur das für diese Instanz erzeugte Plugin samt MCP-Adresse, kein User-Token und kein Verwaltungstoken. Beim Verbinden geben Sie das persönliche User-Token ein.
+
+Der Reverse-Proxy muss `/marketplace.json` und `/marketplace.git/` ohne zusätzliche Authentifizierung an die Anwendung weiterleiten. Das Nginx-Beispiel oben leitet bereits alle Pfade unter `/` weiter. `/plugin.zip` bleibt als öffentliche Kompatibilitätsadresse für bereits verteilte Links verfügbar; die Verwaltungsoberfläche bietet keinen ZIP-Download mehr an.
+
+`APP_TITLE` passt den Namen der Verwaltungsoberfläche und der Anmeldecode-E-Mails an. Für ein Logo setzen Sie `APP_LOGO_FILENAME` auf einen Dateinamen im Unterordner `image` des Datenverzeichnisses; ohne Logo bleibt das Standardzeichen sichtbar. `PLUGIN_NAME` legt den Anzeigenamen des Plugins fest. Der Paketordner und die Plugin-ID werden daraus als kleingeschriebener ASCII-Name mit Bindestrichen abgeleitet.
 
 ## Verfügbare MCP-Funktionen
 

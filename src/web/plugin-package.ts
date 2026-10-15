@@ -79,8 +79,8 @@ export function pluginPackageName(pluginName: string): string {
   return slug;
 }
 
-/** Generates the installable plugin archive with endpoint metadata and credential setup guidance. */
-export function createMailstackPluginArchive(mcpUrl: string, pluginName: string): Buffer {
+/** Generates the plugin files at their root paths for ZIP and Git marketplace packaging. */
+export function createMailstackPluginFiles(mcpUrl: string, pluginName: string): ZipEntry[] {
   const origin = new URL(mcpUrl).origin;
   const packageName = pluginPackageName(pluginName);
   const pluginJson = {
@@ -136,39 +136,56 @@ Geben Sie das Token niemals in den Chat ein und speichern Sie es nicht in Plugin
 
 Das statische Verwaltungstoken wird ausschließlich für die Anmeldung auf \`${origin}\` benötigt. Es funktioniert nicht als MCP-Zugang.
 `;
+  const marketplaceUrl = new URL('/marketplace.git', origin).toString();
   const installGuide = `# ${pluginName} Plugin installieren
 
-Dieses Paket enthält die Verbindung zu \`${mcpUrl}\`. Es enthält keine Zugangsdaten.
+Der Marketplace dieser Instanz stellt das Plugin unter \`${marketplaceUrl}\` bereit. Das Plugin verwendet \`${mcpUrl}\` und enthält keine Zugangsdaten.
 
-## Codex und ChatGPT-Desktop-App
+## Codex CLI
 
-1. Entpacken Sie das Archiv in \`~/.codex/plugins\`; dadurch entsteht der Ordner \`~/.codex/plugins/${packageName}\`.
-2. Legen Sie \`~/.agents/plugins/marketplace.json\` an oder ergänzen Sie die Datei um diesen Eintrag:
+Fügen Sie den Marketplace hinzu und öffnen Sie anschließend den Plugin-Browser:
 
-\`\`\`json
-{
-  "name": "mailstack-local",
-  "plugins": [
-    {
-      "name": "${packageName}",
-      "source": { "source": "local", "path": "./.codex/plugins/${packageName}" },
-      "policy": { "installation": "AVAILABLE", "authentication": "ON_INSTALL" },
-      "category": "Productivity"
-    }
-  ]
-}
+\`\`\`sh
+codex plugin marketplace add ${marketplaceUrl}
 \`\`\`
 
-3. Starten Sie die ChatGPT-Desktop-App neu und installieren Sie ${pluginName} unter **Plugins** aus der Quelle \`mailstack-local\`. In Codex CLI können Sie den Plugin-Browser mit \`/plugins\` öffnen.
-4. Geben Sie beim Verbinden ein persönliches User-Token ein. Erstellen oder widerrufen Sie Tokens unter \`${origin}\`.
+Öffnen Sie in Codex \`/plugins\` und installieren Sie ${pluginName} aus diesem Marketplace.
 
-Der Plugin-Ordner ist lokal installiert. Damit andere Nutzer das Plugin beziehen können, muss es über eine gemeinsame Marketplace-Quelle verteilt werden.
+## ChatGPT-Desktop-App
+
+Öffnen Sie **Plugins**, fügen Sie den Git-Marketplace \`${marketplaceUrl}\` hinzu und installieren Sie ${pluginName} aus der Liste.
+
+Beim ersten Verbinden fragt Codex nach einem persönlichen User-Token. Erstellen und verwalten Sie dieses Token unter \`${origin}\`. Das statische Verwaltungstoken ist dafür nicht geeignet.
 `;
 
-  return zip([
-    jsonEntry(`${packageName}/plugin.json`, pluginJson),
-    jsonEntry(`${packageName}/mcp.json`, mcpJson),
-    { name: `${packageName}/skills/setup/SKILL.md`, data: Buffer.from(setupSkill, 'utf8') },
-    { name: `${packageName}/INSTALL.md`, data: Buffer.from(installGuide, 'utf8') },
-  ]);
+  return [
+    jsonEntry('plugin.json', pluginJson),
+    jsonEntry('mcp.json', mcpJson),
+    { name: 'skills/setup/SKILL.md', data: Buffer.from(setupSkill, 'utf8') },
+    { name: 'INSTALL.md', data: Buffer.from(installGuide, 'utf8') },
+  ];
+}
+
+/** Creates a Codex marketplace catalog whose plugin source is the instance's Git endpoint. */
+export function createMailstackMarketplace(marketplaceGitUrl: string, pluginName: string) {
+  const packageName = pluginPackageName(pluginName);
+  return {
+    name: packageName,
+    interface: { displayName: `${pluginName} Marketplace` },
+    plugins: [{
+      name: packageName,
+      source: { source: 'url', url: marketplaceGitUrl },
+      policy: { installation: 'AVAILABLE', authentication: 'ON_INSTALL' },
+      category: 'Productivity',
+    }],
+  };
+}
+
+/** Generates the compatibility ZIP with endpoint metadata and credential setup guidance. */
+export function createMailstackPluginArchive(mcpUrl: string, pluginName: string): Buffer {
+  const packageName = pluginPackageName(pluginName);
+  return zip(createMailstackPluginFiles(mcpUrl, pluginName).map((entry) => ({
+    ...entry,
+    name: `${packageName}/${entry.name}`,
+  })));
 }

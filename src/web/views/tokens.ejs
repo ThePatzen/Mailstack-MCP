@@ -46,12 +46,13 @@
         </form>
       </section>
       <section class="panel setup-panel" aria-labelledby="setup-title">
-        <div class="panel-heading"><div><h2 id="setup-title">MCP-Client einrichten</h2><p class="muted">Verbinden Sie Codex oder die ChatGPT-Desktop-App mit Ihrem Postfach.</p></div><span class="setup-mark" aria-hidden="true">↗</span></div>
+        <div class="panel-heading"><div><h2 id="setup-title">Codex einrichten</h2><p class="muted">Verbinden Sie Codex mit Ihrem Postfach – direkt oder über den Marketplace.</p></div><span class="setup-mark" aria-hidden="true">↗</span></div>
         <div class="setup-endpoint"><span>Server-Adresse</span><code><%= mcpUrl || 'Über HTTPS öffnen, um die Server-Adresse anzuzeigen' %></code></div>
         <div class="setup-columns">
-          <div class="setup-step"><span class="setup-number">1</span><div><strong>Pluginpaket herunterladen</strong><p>Das ZIP enthält die Adresse dieses Servers und die Verbindungseinstellungen. Es enthält keine Zugangsdaten.</p><% if (mcpUrl) { %><a class="button button-secondary" href="/plugin.zip">Plugin für Codex / ChatGPT-Desktop herunterladen</a><% } else { %><p>Der Download ist verfügbar, sobald Sie diese Verwaltung über die öffentliche HTTPS-Adresse öffnen.</p><% } %></div></div>
-          <div class="setup-step"><span class="setup-number">2</span><div><strong>Plugin lokal installieren</strong><p>Entpacken Sie das ZIP in <code>~/.codex/plugins</code> und ergänzen Sie den persönlichen Marketplace in <code>~/.agents/plugins/marketplace.json</code>. Eine Vorlage und Anleitung liegt als <code>INSTALL.md</code> im ZIP.</p><p>Starten Sie danach die ChatGPT-Desktop-App neu und installieren Sie das Plugin unter <strong>Plugins</strong>. In Codex CLI öffnen Sie den Plugin-Browser mit <code>/plugins</code>.</p></div></div>
-          <div class="setup-step"><span class="setup-number">3</span><div><strong>Mit einem User-Token verbinden</strong><p>Geben Sie beim Verbindungsdialog ein persönliches User-Token ein. Das Token wird nicht ins Pluginpaket geschrieben. Das statische Verwaltungstoken wird nur für diese Oberfläche verwendet.</p></div></div>
+          <div class="setup-step"><span class="setup-number">1</span><div><strong>MCP direkt konfigurieren</strong><p>Fügen Sie diese Verbindung in <code>~/.codex/config.toml</code> ein:</p><% if (mcpUrl) { %><pre class="setup-code"><code>[mcp_servers.mailstack]
+url = "<%= mcpUrl %>"
+bearer_token_env_var = "MAILSTACK_MCP_TOKEN"</code></pre><% } %><p>Setzen Sie <code>MAILSTACK_MCP_TOKEN</code> in der Umgebung von Codex auf ein User-Token. Speichern Sie es nicht in der Konfigurationsdatei.</p></div></div>
+          <div class="setup-step"><span class="setup-number">2</span><div><strong>Codex Marketplace hinzufügen</strong><p>Der öffentliche Katalog ist <a href="/marketplace.json" target="_blank" rel="noreferrer">hier einsehbar</a>. Fügen Sie den Git-Marketplace in Codex hinzu:</p><% if (mcpUrl) { %><pre class="setup-code"><code>codex plugin marketplace add <%= mcpUrl.replace(/\/mcp$/, '/marketplace.git') %></code></pre><% } %><p>Öffnen Sie <code>/plugins</code> und installieren Sie <%= pluginName %> aus dem hinzugefügten Marketplace.</p><p>Das Plugin enthält die Server-Adresse, aber kein Token. Codex fragt beim Verbinden nach Ihrem persönlichen User-Token.</p></div></div>
         </div>
       </section>
       <section class="token-section" aria-labelledby="tokens-title">

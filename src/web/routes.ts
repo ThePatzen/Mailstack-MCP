@@ -4,7 +4,8 @@ import rateLimit, { ipKeyGenerator } from 'express-rate-limit';
 import { encryptSecret } from '../security/crypto.js';
 import { sendManagementLoginCode } from '../smtp/system-mail.js';
 import { consumeEmailLoginChallenge, createEmailLoginChallenge, invalidateEmailLoginChallenge, createOrUpdateAccount, createUserToken, deleteToken, findSession, getAccountCredentials, listTokens, revokeToken, setToolPermission } from '../storage/repository.js';
-import { createMailstackPluginArchive, pluginPackageName } from './plugin-package.js';
+import { createMailstackMarketplace, createMailstackPluginArchive, pluginPackageName } from './plugin-package.js';
+import { serveMarketplaceGit } from './marketplace-git.js';
 import { verifyImapLogin, verifyStaticToken } from './auth.js';
 import type { WebDependencies } from './app.js';
 import { createLoginCsrfToken, csrfToken, LOGIN_CSRF_COOKIE, requireCsrf, verifyLoginCsrfToken } from './csrf.js';
@@ -165,6 +166,29 @@ export function createManagementRouter(deps: WebDependencies): Router {
   const loggedIn = requireManagementSession;
   const csrf = requireCsrf(deps.encryptionKey);
 
+  // Publish the instance-specific catalog without exposing account data or credentials.
+  router.get('/marketplace.json', (req, res) => {
+    const mcpUrl = publicMcpUrl(req);
+    if (!mcpUrl) {
+      res.status(400).send('Der Marketplace ist nur über die öffentliche HTTPS-Adresse verfügbar.');
+      return;
+    }
+    const origin = new URL(mcpUrl).origin;
+    const marketplace = createMailstackMarketplace(new URL('/marketplace.git', origin).toString(), deps.pluginName);
+    setNoStore(res);
+    res.type('application/json').send(`${JSON.stringify(marketplace, null, 2)}\n`);
+  });
+
+  // Route Git smart-HTTP requests to the read-only instance-specific plugin repository.
+  router.all(/^\/marketplace\.git(?:\/.*)?$/, async (req, res) => {
+    const mcpUrl = publicMcpUrl(req);
+    if (!mcpUrl) {
+      res.status(400).send('Der Marketplace ist nur über die öffentliche HTTPS-Adresse verfügbar.');
+      return;
+    }
+    await serveMarketplaceGit(req, res, mcpUrl, deps.pluginName);
+  });
+
   // Resume an existing session before showing a new login form.
   router.get('/', (req, res) => {
     const cookie = readCookie(req, SESSION_COOKIE);
@@ -293,7 +317,7 @@ export function createManagementRouter(deps: WebDependencies): Router {
   });
 
   // Generate connection settings for the public HTTPS endpoint without embedding credentials.
-  router.get('/plugin.zip', loggedIn, (req, res) => {
+  router.get('/plugin.zip', (req, res) => {
     const mcpUrl = publicMcpUrl(req);
     if (!mcpUrl) {
       res.status(400).send('Das Plugin kann nur über die öffentliche HTTPS-Adresse heruntergeladen werden.');
