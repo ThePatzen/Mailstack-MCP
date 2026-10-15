@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.1.9] - 2026-10-15
+
+### Added
+- OAuth-Verbindungen übernehmen die aktuellen Funktionen des gewählten User-Tokens und synchronisieren spätere Berechtigungsänderungen automatisch.
+
+### Changed
+- Im OAuth-Zustimmungsdialog wird nur noch das User-Token ausgewählt; eine zweite Funktionsauswahl entfällt.
+
 ## [0.1.8] - 2026-10-15
 
 ### Fixed
