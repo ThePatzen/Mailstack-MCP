@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.1.5] - 2026-10-15
+
+### Changed
+- OAuth-Verbindungsanleitung für Codex präzisiert.
+- DCR-Ablehnungen nennen im Serverlog die Fehlerkategorie, ohne Client-Metadaten zu protokollieren.
+
 ## [0.1.4] - 2026-10-15
 
 ### Added
