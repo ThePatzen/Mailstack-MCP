@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.1.6] - 2026-10-15
+
+### Changed
+- DCR-Diagnosen zeigen bei abgelehnten Grant-Typen eine begrenzte Zusammenfassung bekannter OAuth-Grant-Namen.
+
 ## [0.1.5] - 2026-10-15
 
 ### Changed
