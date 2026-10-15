@@ -80,7 +80,7 @@ bearer_token_env_var = "<%= mcpTokenEnvironmentName %>"</code></pre><% } %><p>Se
                 <% if (tokenGrants.length) { %>
                   <details class="token-permissions-inline oauth-grants"><summary>OAuth-Verbindungen (<%= tokenGrants.length %>)</summary><div class="permission-grid oauth-grant-list">
                     <% tokenGrants.forEach((grant) => { %>
-                      <div class="oauth-grant-row"><div><strong><%= grant.clientName %></strong><p class="muted"><%= grant.scopes.map((scope) => toolLabels[scope.slice('mailstack:'.length)] || scope).join(' · ') %></p><small>Freigegeben <%= new Date(grant.createdAt).toLocaleString('de-AT') %> · <%= grant.revokedAt ? 'widerrufen' : grant.expiresAt <= Date.now() ? 'abgelaufen' : `gültig bis ${new Date(grant.expiresAt).toLocaleString('de-AT')}` %></small></div>
+                      <div class="oauth-grant-row"><div><strong><%= grant.clientName %></strong><p class="muted"><%= grant.scopes.map((scope) => toolLabels[scope.slice('mailstack:'.length)] || scope).join(' · ') %></p><small>Freigegeben <%= new Date(grant.createdAt).toLocaleString('de-AT') %> · <%= grant.revokedAt ? 'widerrufen' : grant.expiresAt <= Date.now() ? 'Freigabe abgelaufen' : `Freigabe gültig bis ${new Date(grant.expiresAt).toLocaleString('de-AT')}` %></small></div>
                         <% if (!grant.revokedAt && grant.expiresAt > Date.now() && !token.revokedAt) { %><form method="post" action="/tokens/<%= token.id %>/oauth-grants/<%= grant.id %>/revoke"><input type="hidden" name="_csrf" value="<%= csrf %>"><button class="button button-danger-quiet" type="submit">Verbindung widerrufen</button></form><% } %>
                       </div>
                     <% }) %>

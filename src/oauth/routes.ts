@@ -7,7 +7,7 @@ import {
 } from '../storage/repository.js';
 import { SESSION_COOKIE } from '../web/sessions.js';
 import { createOAuthHandoffValue, OAUTH_HANDOFF_COOKIE } from './handoff.js';
-import { beginAuthorization, exchangeAuthorizationCode } from './service.js';
+import { beginAuthorization, exchangeAuthorizationCode, exchangeRefreshToken } from './service.js';
 import {
   OAUTH_ACCESS_TOKEN_TTL_MS,
   OAUTH_AUTHORIZATION_ENDPOINT,
@@ -130,7 +130,7 @@ export function createOAuthRouter(dependencies: OAuthRouteDependencies): Router 
       token_endpoint: new URL(OAUTH_TOKEN_ENDPOINT, origin).toString(),
       registration_endpoint: new URL(OAUTH_REGISTRATION_ENDPOINT, origin).toString(),
       response_types_supported: ['code'],
-      grant_types_supported: ['authorization_code'],
+      grant_types_supported: ['authorization_code', 'refresh_token'],
       code_challenge_methods_supported: ['S256'],
       token_endpoint_auth_methods_supported: ['none'],
       scopes_supported: supportedOAuthScopes(dependencies.smtpConfigured),
@@ -147,7 +147,7 @@ export function createOAuthRouter(dependencies: OAuthRouteDependencies): Router 
         client_id: client.clientId,
         client_name: client.clientName,
         redirect_uris: client.redirectUris,
-        grant_types: ['authorization_code'],
+        grant_types: client.grantTypes,
         response_types: ['code'],
         token_endpoint_auth_method: 'none',
       });
@@ -213,23 +213,33 @@ export function createOAuthRouter(dependencies: OAuthRouteDependencies): Router 
     try {
       const origin = publicOrigin(req);
       if (!origin) throw new OAuthProtocolError('invalid_request', 'The token request requires the public HTTPS origin.');
-      const tokens = exchangeAuthorizationCode({
-        grantType: formString('grant_type'),
-        code: formString('code'),
-        clientId: formString('client_id'),
-        redirectUri: formString('redirect_uri'),
-        resource: formString('resource'),
-        codeVerifier: formString('code_verifier'),
-      });
+      const grantType = formString('grant_type');
+      const resource = typeof body.resource === 'string' ? body.resource :
+        body.resource === undefined ? undefined : '';
+      const tokens = grantType === 'refresh_token'
+        ? exchangeRefreshToken({
+          refreshToken: formString('refresh_token'),
+          clientId: formString('client_id'),
+          resource,
+        })
+        : exchangeAuthorizationCode({
+          grantType,
+          code: formString('code'),
+          clientId: formString('client_id'),
+          redirectUri: formString('redirect_uri'),
+          resource: formString('resource'),
+          codeVerifier: formString('code_verifier'),
+        });
       res.json({
         access_token: tokens.accessToken,
+        ...(tokens.refreshToken && { refresh_token: tokens.refreshToken }),
         token_type: tokens.tokenType,
         expires_in: Math.min(tokens.expiresIn, Math.floor(OAUTH_ACCESS_TOKEN_TTL_MS / 1000)),
         scope: tokens.scope,
       });
     } catch (error) {
       const protocolError = error instanceof OAuthProtocolError
-        ? error : new OAuthProtocolError('invalid_grant', 'The authorization code is invalid or expired.');
+        ? error : new OAuthProtocolError('invalid_grant', 'The token grant is invalid or expired.');
       res.status(protocolError.code === 'invalid_client' ? 401 : 400).json({
         error: protocolError.code,
         error_description: protocolError.message,

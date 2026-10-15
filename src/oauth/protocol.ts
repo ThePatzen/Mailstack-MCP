@@ -128,20 +128,19 @@ export function registerPublicClient(metadata: unknown): OAuthClient {
   if (input.token_endpoint_auth_method !== undefined && input.token_endpoint_auth_method !== 'none') {
     throw new OAuthProtocolError('invalid_client_metadata', 'Only public OAuth clients are supported.');
   }
-  if (input.grant_types !== undefined &&
-      (!Array.isArray(input.grant_types) || input.grant_types.length !== 1 || input.grant_types[0] !== 'authorization_code')) {
-    throw new OAuthProtocolError(
-      'invalid_client_metadata',
-      'Only the authorization-code grant is supported.',
-      'grant_types',
-    );
+  const grantTypes = input.grant_types === undefined ? ['authorization_code'] : input.grant_types;
+  if (!Array.isArray(grantTypes) || grantTypes.length < 1 || grantTypes.length > 2 ||
+      new Set(grantTypes).size !== grantTypes.length ||
+      grantTypes.some((grant) => grant !== 'authorization_code' && grant !== 'refresh_token') ||
+      !grantTypes.includes('authorization_code')) {
+    throw new OAuthProtocolError('invalid_client_metadata', 'The requested grant types are not supported.', 'grant_types');
   }
   if (input.response_types !== undefined &&
       (!Array.isArray(input.response_types) || input.response_types.length !== 1 || input.response_types[0] !== 'code')) {
     throw new OAuthProtocolError('invalid_client_metadata', 'Only the authorization-code response type is supported.');
   }
   try {
-    return registerOAuthClient(clientName, redirectUris);
+    return registerOAuthClient(clientName, redirectUris, grantTypes as string[]);
   } catch (error) {
     if (error instanceof OAuthClientCapacityError) {
       throw new OAuthProtocolError('server_error', 'This instance cannot register additional OAuth clients.');

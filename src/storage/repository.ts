@@ -29,12 +29,14 @@ export interface OAuthClient {
   clientId: string;
   clientName: string;
   redirectUris: string[];
+  grantTypes: string[];
   createdAt: number;
 }
 
 const MAX_OAUTH_CLIENTS = 10_000;
 const OAUTH_CLIENT_IDLE_RETENTION_MS = 180 * 24 * 60 * 60 * 1000;
 const OAUTH_GRANT_HISTORY_RETENTION_MS = 90 * 24 * 60 * 60 * 1000;
+export const OAUTH_GRANT_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 
 /** Reports that an instance reached its bounded OAuth client registry capacity. */
 export class OAuthClientCapacityError extends Error {
@@ -91,6 +93,7 @@ interface OAuthClientRow {
   client_id: string;
   client_name: string;
   redirect_uris: string;
+  grant_types: string;
   created_at: number;
   last_used_at: number;
 }
@@ -148,6 +151,7 @@ function cleanupExpiredOAuthData(db: ReturnType<typeof getDatabase>, now: number
   db.prepare('DELETE FROM oauth_authorization_requests WHERE expires_at <= ?').run(now);
   db.prepare('DELETE FROM oauth_authorization_codes WHERE expires_at <= ?').run(now);
   db.prepare('DELETE FROM oauth_access_tokens WHERE expires_at <= ?').run(now);
+  db.prepare('DELETE FROM oauth_refresh_tokens WHERE expires_at <= ?').run(now);
   db.prepare('DELETE FROM oauth_grants WHERE expires_at <= ?').run(now - OAUTH_GRANT_HISTORY_RETENTION_MS);
   db.prepare(`DELETE FROM oauth_clients WHERE last_used_at <= ?
     AND NOT EXISTS (SELECT 1 FROM oauth_grants WHERE client_id = oauth_clients.client_id)`)
@@ -160,6 +164,7 @@ function oauthClientRecord(row: OAuthClientRow): OAuthClient {
     clientId: row.client_id,
     clientName: row.client_name,
     redirectUris: storedStringArray(row.redirect_uris),
+    grantTypes: storedStringArray(row.grant_types),
     createdAt: row.created_at,
   };
 }
@@ -241,12 +246,19 @@ export function deleteToken(accountId: string, tokenId: string): boolean {
   return getDatabase().prepare('DELETE FROM tokens WHERE id = ? AND account_id = ? AND revoked_at IS NOT NULL').run(tokenId, accountId).changes > 0;
 }
 
-/** Registers one OAuth public client and stores its exact callback allowlist. */
-export function registerOAuthClient(clientName: string, redirectUris: string[]): OAuthClient {
+/** Registers a public OAuth client with its exact callback allowlist and declared grants. */
+export function registerOAuthClient(
+  clientName: string,
+  redirectUris: string[],
+  grantTypes: string[] = ['authorization_code'],
+): OAuthClient {
   const cleanName = clientName.trim();
   if (!cleanName || cleanName.length > 100 || /[\r\n\0]/.test(cleanName) ||
       !Array.isArray(redirectUris) || redirectUris.length < 1 || redirectUris.length > 16 ||
-      !redirectUris.every((uri) => typeof uri === 'string' && uri.length > 0 && uri.length <= 2048 && !/[\r\n\0]/.test(uri))) {
+      !redirectUris.every((uri) => typeof uri === 'string' && uri.length > 0 && uri.length <= 2048 && !/[\r\n\0]/.test(uri)) ||
+      !Array.isArray(grantTypes) || !grantTypes.length || new Set(grantTypes).size !== grantTypes.length ||
+      grantTypes.some((grant) => !['authorization_code', 'refresh_token'].includes(grant)) ||
+      !grantTypes.includes('authorization_code')) {
     throw new Error('Invalid OAuth client registration.');
   }
   const clientId = generateToken();
@@ -256,10 +268,10 @@ export function registerOAuthClient(clientName: string, redirectUris: string[]):
     cleanupExpiredOAuthData(db, now);
     const count = (db.prepare('SELECT COUNT(*) AS count FROM oauth_clients').get() as { count: number }).count;
     if (count >= MAX_OAUTH_CLIENTS) throw new OAuthClientCapacityError();
-    db.prepare(`INSERT INTO oauth_clients (client_id, client_name, redirect_uris, created_at, last_used_at)
-      VALUES (?, ?, ?, ?, ?)`).run(clientId, cleanName, JSON.stringify([...new Set(redirectUris)]), now, now);
+    db.prepare(`INSERT INTO oauth_clients (client_id, client_name, redirect_uris, grant_types, created_at, last_used_at)
+      VALUES (?, ?, ?, ?, ?, ?)`).run(clientId, cleanName, JSON.stringify([...new Set(redirectUris)]), JSON.stringify(grantTypes), now, now);
   }).immediate();
-  return { clientId, clientName: cleanName, redirectUris: [...new Set(redirectUris)], createdAt: now };
+  return { clientId, clientName: cleanName, redirectUris: [...new Set(redirectUris)], grantTypes, createdAt: now };
 }
 
 /** Resolves a registered public client by its public identifier. */
@@ -368,11 +380,11 @@ export function createOAuthAuthorizationCode(input: {
   }).immediate();
 }
 
-/** Redeems a PKCE-bound authorization code once and issues an opaque, short-lived access token. */
+/** Redeems a PKCE-bound authorization code once and issues an access token plus any registered refresh token. */
 export function exchangeOAuthAuthorizationCode(input: {
   code: string; clientId: string; redirectUri: string; resource: string;
   codeVerifier: string; now?: number; accessTokenTtlMs: number;
-}): { accessToken: string; grantId: string; scopes: string[]; expiresAt: number } | null {
+}): { accessToken: string; refreshToken: string | null; grantId: string; scopes: string[]; expiresAt: number } | null {
   const now = input.now ?? Date.now();
   if (!/^[A-Za-z0-9_-]{43}$/.test(input.code) || !/^[A-Za-z0-9_-]{43}$/.test(input.clientId) ||
       !/^[A-Za-z0-9._~-]{43,128}$/.test(input.codeVerifier) || !input.redirectUri || !input.resource ||
@@ -382,18 +394,20 @@ export function exchangeOAuthAuthorizationCode(input: {
   return db.transaction(() => {
     cleanupExpiredOAuthData(db, now);
     const codeDigest = hashToken(input.code);
-    const row = db.prepare(`SELECT c.code_hash, c.request_id_hash, c.account_id, c.user_token_id,
-      c.granted_scopes, c.expires_at AS code_expires_at, c.consumed_at,
-      r.client_id, r.redirect_uri, r.resource, r.code_challenge,
-      t.id AS active_token_id
-      FROM oauth_authorization_codes c
-      JOIN oauth_authorization_requests r ON r.request_id_hash = c.request_id_hash
-      JOIN tokens t ON t.id = c.user_token_id AND t.account_id = c.account_id AND t.revoked_at IS NULL
-      WHERE c.code_hash = ? AND c.expires_at > ? AND c.consumed_at IS NULL`)
+    const row = db.prepare(`SELECT ac.code_hash, ac.request_id_hash, ac.account_id, ac.user_token_id,
+      ac.granted_scopes, ac.expires_at AS code_expires_at, ac.consumed_at,
+      r.client_id, r.redirect_uri, r.resource, r.code_challenge, oc.grant_types AS client_grant_types,
+      tok.id AS active_token_id
+      FROM oauth_authorization_codes ac
+      JOIN oauth_authorization_requests r ON r.request_id_hash = ac.request_id_hash
+      JOIN oauth_clients oc ON oc.client_id = r.client_id
+      JOIN tokens tok ON tok.id = ac.user_token_id AND tok.account_id = ac.account_id AND tok.revoked_at IS NULL
+      WHERE ac.code_hash = ? AND ac.expires_at > ? AND ac.consumed_at IS NULL`)
       .get(codeDigest, now) as {
         code_hash: string; request_id_hash: string; account_id: string; user_token_id: string;
         granted_scopes: string; code_expires_at: number; consumed_at: number | null;
-        client_id: string; redirect_uri: string; resource: string; code_challenge: string; active_token_id: string;
+        client_id: string; redirect_uri: string; resource: string; code_challenge: string;
+        client_grant_types: string; active_token_id: string;
       } | undefined;
     if (!row || !tokenDigestMatches(input.code, row.code_hash) || row.client_id !== input.clientId ||
         row.redirect_uri !== input.redirectUri || row.resource !== input.resource ||
@@ -409,17 +423,79 @@ export function exchangeOAuthAuthorizationCode(input: {
       WHERE code_hash = ? AND consumed_at IS NULL AND expires_at > ?`).run(now, codeDigest, now);
     if (!consumed.changes) return null;
     const grantId = randomUUID();
-    const expiresAt = now + input.accessTokenTtlMs;
+    const grantExpiresAt = now + OAUTH_GRANT_TTL_MS;
+    const expiresAt = Math.min(now + input.accessTokenTtlMs, grantExpiresAt);
     const accessToken = generateToken();
+    const refreshToken = storedStringArray(row.client_grant_types).includes('refresh_token') ? generateToken() : null;
     db.prepare(`INSERT INTO oauth_grants (
       id, account_id, user_token_id, client_id, resource, granted_scopes, created_at, expires_at
     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`).run(
       grantId, row.account_id, row.user_token_id, row.client_id, row.resource,
-      JSON.stringify(grantedScopes), now, expiresAt,
+      JSON.stringify(grantedScopes), now, grantExpiresAt,
     );
     db.prepare(`INSERT INTO oauth_access_tokens (access_token_hash, grant_id, created_at, expires_at)
       VALUES (?, ?, ?, ?)`).run(hashToken(accessToken), grantId, now, expiresAt);
-    return { accessToken, grantId, scopes: grantedScopes, expiresAt };
+    if (refreshToken) {
+      db.prepare(`INSERT INTO oauth_refresh_tokens (refresh_token_hash, grant_id, created_at, expires_at)
+        VALUES (?, ?, ?, ?)`).run(hashToken(refreshToken), grantId, now, grantExpiresAt);
+    }
+    return { accessToken, refreshToken, grantId, scopes: grantedScopes, expiresAt };
+  }).immediate();
+}
+
+/** Rotates a single-use refresh token and revokes its grant when a matching client replays it. */
+export function rotateOAuthRefreshToken(input: {
+  refreshToken: string; clientId: string; resource?: string; now?: number; accessTokenTtlMs: number;
+}): { accessToken: string; refreshToken: string; grantId: string; scopes: string[]; expiresAt: number } | null {
+  const now = input.now ?? Date.now();
+  if (!/^[A-Za-z0-9_-]{43}$/.test(input.refreshToken) || !/^[A-Za-z0-9_-]{43}$/.test(input.clientId) ||
+      (input.resource !== undefined && !input.resource) || !Number.isSafeInteger(now) || !Number.isSafeInteger(input.accessTokenTtlMs) ||
+      input.accessTokenTtlMs <= 0) return null;
+  const digest = hashToken(input.refreshToken);
+  const db = getDatabase();
+  return db.transaction(() => {
+    cleanupExpiredOAuthData(db, now);
+    const row = db.prepare(`SELECT rt.refresh_token_hash, rt.expires_at AS token_expires_at, rt.consumed_at,
+      g.id AS grant_id, g.client_id, g.resource, g.granted_scopes, g.expires_at AS grant_expires_at,
+      g.revoked_at, t.id AS active_token_id
+      FROM oauth_refresh_tokens rt
+      JOIN oauth_grants g ON g.id = rt.grant_id
+      LEFT JOIN tokens t ON t.id = g.user_token_id AND t.account_id = g.account_id AND t.revoked_at IS NULL
+      WHERE rt.refresh_token_hash = ?`).get(digest) as {
+        refresh_token_hash: string; token_expires_at: number; consumed_at: number | null;
+        grant_id: string; client_id: string; resource: string; granted_scopes: string;
+        grant_expires_at: number; revoked_at: number | null; active_token_id: string | null;
+      } | undefined;
+    if (!row || !tokenDigestMatches(input.refreshToken, row.refresh_token_hash) ||
+        row.client_id !== input.clientId || (input.resource !== undefined && row.resource !== input.resource)) return null;
+
+    if (row.consumed_at !== null) {
+      if (row.grant_expires_at > now && row.revoked_at === null) {
+        db.prepare('UPDATE oauth_grants SET revoked_at = ? WHERE id = ? AND revoked_at IS NULL')
+          .run(now, row.grant_id);
+      }
+      return null;
+    }
+    if (row.token_expires_at <= now || row.grant_expires_at <= now || row.revoked_at !== null || !row.active_token_id) {
+      return null;
+    }
+
+    const scopes = storedStringArray(row.granted_scopes);
+    if (!scopes.length) return null;
+    const consumed = db.prepare(`UPDATE oauth_refresh_tokens SET consumed_at = ?
+      WHERE refresh_token_hash = ? AND consumed_at IS NULL AND expires_at > ?`).run(now, digest, now);
+    if (!consumed.changes) return null;
+
+    const accessToken = generateToken();
+    const refreshToken = generateToken();
+    const expiresAt = Math.min(now + input.accessTokenTtlMs, row.grant_expires_at);
+    db.prepare(`INSERT INTO oauth_access_tokens (access_token_hash, grant_id, created_at, expires_at)
+      VALUES (?, ?, ?, ?)`).run(hashToken(accessToken), row.grant_id, now, expiresAt);
+    db.prepare(`INSERT INTO oauth_refresh_tokens (refresh_token_hash, grant_id, created_at, expires_at)
+      VALUES (?, ?, ?, ?)`).run(hashToken(refreshToken), row.grant_id, now, row.grant_expires_at);
+    db.prepare('UPDATE tokens SET last_used_at = ? WHERE id = ? AND revoked_at IS NULL')
+      .run(now, row.active_token_id);
+    return { accessToken, refreshToken, grantId: row.grant_id, scopes, expiresAt };
   }).immediate();
 }
 

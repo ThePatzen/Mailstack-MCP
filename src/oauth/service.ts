@@ -2,6 +2,7 @@ import {
   createOAuthAuthorizationRequest as storeAuthorizationRequest,
   exchangeOAuthAuthorizationCode as redeemAuthorizationCode,
   findOAuthClient,
+  rotateOAuthRefreshToken as redeemRefreshToken,
   type OAuthClient,
 } from '../storage/repository.js';
 import {
@@ -40,7 +41,7 @@ export function beginAuthorization(
   return { ...pending, request, client };
 }
 
-/** Exchanges a validated authorization-code form for one opaque access token. */
+/** Exchanges a validated authorization-code form for an access token and its refresh token. */
 export function exchangeAuthorizationCode(input: {
   grantType: string;
   code: string;
@@ -48,9 +49,9 @@ export function exchangeAuthorizationCode(input: {
   redirectUri: string;
   resource: string;
   codeVerifier: string;
-}): { accessToken: string; tokenType: 'Bearer'; expiresIn: number; scope: string } {
+}): { accessToken: string; refreshToken: string | null; tokenType: 'Bearer'; expiresIn: number; scope: string } {
   if (input.grantType !== 'authorization_code') {
-    throw new OAuthProtocolError('unsupported_grant_type', 'Only the authorization-code grant is supported.');
+    throw new OAuthProtocolError('unsupported_grant_type', 'This token grant is not supported.');
   }
   const client = findOAuthClient(input.clientId);
   if (!client) throw new OAuthProtocolError('invalid_client', 'The OAuth client is not registered.');
@@ -70,6 +71,35 @@ export function exchangeAuthorizationCode(input: {
   if (!token) throw new OAuthProtocolError('invalid_grant', 'The authorization code is invalid or expired.');
   return {
     accessToken: token.accessToken,
+    refreshToken: token.refreshToken,
+    tokenType: 'Bearer',
+    expiresIn: Math.floor((token.expiresAt - now) / 1000),
+    scope: token.scopes.join(' '),
+  };
+}
+
+/** Exchanges a registered client's refresh token for a newly rotated token pair. */
+export function exchangeRefreshToken(input: {
+  refreshToken: string;
+  clientId: string;
+  resource?: string;
+}): { accessToken: string; refreshToken: string; tokenType: 'Bearer'; expiresIn: number; scope: string } {
+  const client = findOAuthClient(input.clientId);
+  if (!client?.grantTypes.includes('refresh_token')) {
+    throw new OAuthProtocolError('invalid_grant', 'The refresh token is invalid or expired.');
+  }
+  const now = Date.now();
+  const token = redeemRefreshToken({
+    refreshToken: input.refreshToken,
+    clientId: input.clientId,
+    ...(input.resource !== undefined && { resource: input.resource }),
+    now,
+    accessTokenTtlMs: OAUTH_ACCESS_TOKEN_TTL_MS,
+  });
+  if (!token) throw new OAuthProtocolError('invalid_grant', 'The refresh token is invalid or expired.');
+  return {
+    accessToken: token.accessToken,
+    refreshToken: token.refreshToken,
     tokenType: 'Bearer',
     expiresIn: Math.floor((token.expiresAt - now) / 1000),
     scope: token.scopes.join(' '),

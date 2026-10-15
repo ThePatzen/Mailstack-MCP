@@ -13,8 +13,9 @@ The existing Mailstack login proves which mailbox account the user controls. A s
 3. The user signs in through an existing Mailstack login method, which verifies the IMAP credentials and any configured email-code challenge. The successful login resolves to an internal `accountId`; the account ID comes from the server-side login result, never from OAuth request parameters.
 4. Mailstack presents the active User-Tokens for that account, including their labels and enabled tool names. The user selects one token and confirms authorization for the requesting client. If no active token exists, the page directs the user to create one in the management interface; OAuth must not silently create a token or broaden permissions.
 5. Mailstack binds the pending OAuth transaction to the authenticated account and selected token ID, then redirects to the exact pre-registered client callback with a one-time authorization code and the original state.
-6. The client exchanges the code and its PKCE verifier at the token endpoint. Mailstack validates and consumes the code atomically, then returns a short-lived opaque access token. No mailbox password or raw User-Token is returned to the client.
-7. The client sends the OAuth access token as a Bearer token to `/mcp`. On every request, Mailstack resolves it to its linked User-Token and account, checks expiry and revocation, and loads the User-Token's current tool permissions. Existing tool-level authorization checks remain in place.
+6. The client exchanges the code and its PKCE verifier at the token endpoint. Mailstack validates and consumes the code atomically, then returns a one-hour opaque access token and, if the registered client requested the refresh-token grant, a refresh token. No mailbox password or raw User-Token is returned to the client.
+7. When the access token expires, a client registered for refresh tokens exchanges its refresh token at the token endpoint. Mailstack atomically consumes that token and rotates it, returning a new access token and refresh token without another browser login.
+8. The client sends the OAuth access token as a Bearer token to `/mcp`. On every request, Mailstack resolves it to its linked User-Token and account, checks expiry and revocation, and loads the User-Token's current tool permissions. Existing tool-level authorization checks remain in place.
 
 ## Permission and revocation model
 
@@ -22,15 +23,15 @@ OAuth grants reference a `token_id` owned by the account established by IMAP log
 
 Revoking or deleting the selected User-Token immediately invalidates all OAuth grants that reference it. Changing its tool permissions takes effect on the next MCP request. A distinct OAuth grant revoke action revokes only that grant. The existing shared tool execution guard continues to enforce each permission even if a tool was already advertised to the MCP client.
 
-OAuth access tokens are opaque random values stored only as cryptographic hashes. They have a short fixed lifetime. Authorization codes are random, short-lived, single-use, stored as hashes, and bound to client ID, exact redirect URI, resource, PKCE challenge, account ID, and selected token ID. Refresh tokens are out of scope for the first release; clients re-run authorization after access-token expiry.
+OAuth access and refresh tokens are opaque random values stored only as cryptographic hashes. Access tokens live for one hour. A grant has a fixed maximum lifetime of 30 days from initial authorization; refreshes do not extend it. Refresh tokens are single-use and rotate atomically. Reuse of a consumed refresh token from the matching registered client and resource revokes the associated grant to stop a replayed token family without allowing an unrelated client to revoke it. Authorization codes are random, short-lived, single-use, stored as hashes, and bound to client ID, exact redirect URI, resource, PKCE challenge, account ID, and selected token ID.
 
 ## OAuth endpoints and discovery
 
 The service publishes public discovery documents for:
 
 - MCP protected resource metadata, identifying the canonical public MCP resource and this instance as its authorization server.
-- OAuth authorization server metadata, advertising the authorization and token endpoints, Authorization Code grant, `S256` PKCE, public token endpoint authentication (`none`), supported scopes, and issuer identifier.
-- A dynamic client registration endpoint, to allow ChatGPT and Codex to register public clients without a client secret. The implementation validates callback URIs and only permits HTTPS callbacks, with narrowly defined loopback HTTP exceptions if required for local clients.
+- OAuth authorization server metadata, advertising the authorization and token endpoints, Authorization Code and Refresh Token grants, `S256` PKCE, public token endpoint authentication (`none`), supported scopes, and issuer identifier.
+- A dynamic client registration endpoint, to allow ChatGPT and Codex to register public clients without a client secret. Authorization Code is required; clients may also register for Refresh Token. The implementation validates callback URIs and only permits HTTPS callbacks, with narrowly defined loopback HTTP exceptions if required for local clients.
 
 MCP tool metadata declares OAuth security requirements per tool, with each tool mapped to its corresponding `mailstack:<tool_name>` scope. Discovery lists the supported tool scopes. OAuth authorization validates requested scopes, displays the resulting tool access on the consent page, and records the approved set on the grant.
 
@@ -40,9 +41,9 @@ Public metadata and registration endpoints do not disclose mailbox accounts, Use
 
 ## Persistence and lifecycle
 
-Versioned SQLite migrations add focused tables for OAuth clients, authorization transactions/codes, and grants/access tokens. Store only hashes of authorization codes and access tokens. Client registrations store validated redirect URIs and public metadata. Each grant stores its account ID, referenced User-Token ID, OAuth client ID, resource, granted scopes, creation time, and revocation time. Expired one-time transactions and codes are removed opportunistically or by bounded cleanup during OAuth operations.
+Versioned SQLite migrations add focused tables for OAuth clients, authorization transactions/codes, grants, access tokens, and refresh tokens. Store only hashes of authorization codes and both token types. Client registrations retain their declared grant types; existing registrations migrate as authorization-code-only clients. Refresh-token records retain consumed hashes until their grant expires so replay can be detected. Each grant stores its account ID, referenced User-Token ID, OAuth client ID, resource, granted scopes, creation time, fixed expiration time, and revocation time. Expired one-time transactions, codes, and refresh-token records are removed opportunistically or by bounded cleanup during OAuth operations.
 
-Foreign keys cascade when an account or User-Token is deleted. The repository layer owns atomic code consumption, PKCE verification inputs, ownership checks, expiry, and revocation; routes do not issue SQL directly.
+Foreign keys cascade when an account or User-Token is deleted. The repository layer owns atomic code consumption, PKCE verification inputs, refresh-token rotation and replay handling, ownership checks, expiry, and revocation; routes do not issue SQL directly.
 
 ## MCP authentication integration
 
@@ -60,7 +61,7 @@ The token-management page shows OAuth grants associated with each User-Token and
 
 - Validate exact redirect URI equality against a registered client; never redirect to a request-provided URI that is not registered.
 - Require and validate `state`; require PKCE `S256`; consume authorization codes once in a database transaction.
-- Enforce short expirations and one-time use for authorization transactions/codes; never log codes, access tokens, refresh tokens, IMAP passwords, or complete User-Tokens.
+- Enforce short expirations and one-time use for authorization transactions/codes, one-hour access tokens, a fixed 30-day grant lifetime, and atomic refresh-token rotation; never log codes, access tokens, refresh tokens, IMAP passwords, or complete User-Tokens.
 - Bind the account and selected User-Token from the authenticated server-side session, and verify ownership again when creating the grant.
 - Use generic login errors and existing login throttling. Add rate limits to registration, authorization, and token endpoints without trusting forwarded client IP values beyond the configured proxy hop.
 - Reject malformed, expired, revoked, wrong-audience, and insufficiently authorized tokens. Return standards-compatible OAuth errors at OAuth endpoints and `401` plus discovery challenge at the MCP boundary.
@@ -69,7 +70,6 @@ The token-management page shows OAuth grants associated with each User-Token and
 ## Scope exclusions
 
 - No external identity provider and no separate Mailstack username/password database.
-- No OAuth refresh tokens in the first release.
 - No automatic creation of User-Tokens or implicit grant of all mailbox tools.
 - No removal of direct User-Token authentication in the first release.
 - No OAuth authorization through the management static token alone; the user must complete the existing mailbox login.
