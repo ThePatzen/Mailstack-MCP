@@ -116,6 +116,7 @@ interface OAuthAuthorizationRequestRow {
 interface OAuthAccessTokenRow extends TokenRow {
   grant_id: string;
   resource: string;
+  scope_ceiling: string;
   granted_scopes: string;
   grant_expires_at: number;
   grant_revoked_at: number | null;
@@ -339,13 +340,13 @@ export function cancelOAuthAuthorizationRequest(requestId: string, accountId: st
     .run(Date.now(), hashToken(requestId), accountId, Date.now()).changes === 1;
 }
 
-/** Issues a one-time code only for the authenticated account's active, permission-compatible User-Token. */
+/** Issues a one-time code for an active User-Token within the OAuth client's requested scope ceiling. */
 export function createOAuthAuthorizationCode(input: {
-  requestId: string; accountId: string; userTokenId: string; grantedScopes: string[]; expiresAt: number;
+  requestId: string; accountId: string; userTokenId: string; scopeCeiling: string[]; expiresAt: number;
 }): string | null {
   const now = Date.now();
   if (!/^[A-Za-z0-9_-]{43}$/.test(input.requestId) || !input.accountId || !input.userTokenId ||
-      !input.grantedScopes.length || !input.grantedScopes.every((scope) => /^mailstack:[a-z][a-z0-9_]{0,99}$/.test(scope)) ||
+      !input.scopeCeiling.length || !input.scopeCeiling.every((scope) => /^mailstack:[a-z][a-z0-9_]{0,99}$/.test(scope)) ||
       !Number.isSafeInteger(input.expiresAt) || input.expiresAt <= now) return null;
   const db = getDatabase();
   return db.transaction(() => {
@@ -359,10 +360,11 @@ export function createOAuthAuthorizationCode(input: {
     const token = db.prepare(`SELECT id FROM tokens
       WHERE id = ? AND account_id = ? AND revoked_at IS NULL`).get(input.userTokenId, input.accountId) as { id: string } | undefined;
     if (!token) return null;
-    const allowedScopes = new Set((db.prepare(`SELECT tool_name FROM tool_permissions
-      WHERE token_id = ? AND allowed = 1`).all(input.userTokenId) as Array<{ tool_name: string }>).map((row) => `mailstack:${row.tool_name}`));
     const requestedScopes = new Set(storedStringArray(request.requested_scopes));
-    if (input.grantedScopes.some((scope) => !requestedScopes.has(scope) || !allowedScopes.has(scope))) return null;
+    if (input.scopeCeiling.some((scope) => !requestedScopes.has(scope))) return null;
+    const enabledScopes = new Set((db.prepare(`SELECT tool_name FROM tool_permissions
+      WHERE token_id = ? AND allowed = 1`).all(input.userTokenId) as Array<{ tool_name: string }>).map((row) => `mailstack:${row.tool_name}`));
+    if (!input.scopeCeiling.some((scope) => enabledScopes.has(scope))) return null;
 
     const code = generateToken();
     const expiresAt = Math.min(input.expiresAt, request.expires_at, now + 600_000);
@@ -374,7 +376,7 @@ export function createOAuthAuthorizationCode(input: {
       code_hash, request_id_hash, account_id, user_token_id, granted_scopes, created_at, expires_at
     ) VALUES (?, ?, ?, ?, ?, ?, ?)`).run(
       hashToken(code), requestDigest, input.accountId, input.userTokenId,
-      JSON.stringify(input.grantedScopes), now, expiresAt,
+      JSON.stringify(input.scopeCeiling), now, expiresAt,
     );
     return code;
   }).immediate();
@@ -413,10 +415,10 @@ export function exchangeOAuthAuthorizationCode(input: {
         row.redirect_uri !== input.redirectUri || row.resource !== input.resource ||
         !timingSafeEqual(Buffer.from(challenge), Buffer.from(row.code_challenge))) return null;
 
-    const requestedGrantScopes = storedStringArray(row.granted_scopes);
+    const scopeCeiling = storedStringArray(row.granted_scopes);
     const currentScopes = new Set((db.prepare(`SELECT tool_name FROM tool_permissions
       WHERE token_id = ? AND allowed = 1`).all(row.user_token_id) as Array<{ tool_name: string }>).map((entry) => `mailstack:${entry.tool_name}`));
-    const grantedScopes = requestedGrantScopes.filter((scope) => currentScopes.has(scope));
+    const grantedScopes = scopeCeiling.filter((scope) => currentScopes.has(scope));
     if (!grantedScopes.length) return null;
 
     const consumed = db.prepare(`UPDATE oauth_authorization_codes SET consumed_at = ?
@@ -428,10 +430,10 @@ export function exchangeOAuthAuthorizationCode(input: {
     const accessToken = generateToken();
     const refreshToken = storedStringArray(row.client_grant_types).includes('refresh_token') ? generateToken() : null;
     db.prepare(`INSERT INTO oauth_grants (
-      id, account_id, user_token_id, client_id, resource, granted_scopes, created_at, expires_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`).run(
+      id, account_id, user_token_id, client_id, resource, granted_scopes, scope_ceiling, created_at, expires_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(
       grantId, row.account_id, row.user_token_id, row.client_id, row.resource,
-      JSON.stringify(grantedScopes), now, grantExpiresAt,
+      JSON.stringify(grantedScopes), JSON.stringify(scopeCeiling), now, grantExpiresAt,
     );
     db.prepare(`INSERT INTO oauth_access_tokens (access_token_hash, grant_id, created_at, expires_at)
       VALUES (?, ?, ?, ?)`).run(hashToken(accessToken), grantId, now, expiresAt);
@@ -456,14 +458,14 @@ export function rotateOAuthRefreshToken(input: {
   return db.transaction(() => {
     cleanupExpiredOAuthData(db, now);
     const row = db.prepare(`SELECT rt.refresh_token_hash, rt.expires_at AS token_expires_at, rt.consumed_at,
-      g.id AS grant_id, g.client_id, g.resource, g.granted_scopes, g.expires_at AS grant_expires_at,
+      g.id AS grant_id, g.client_id, g.resource, g.scope_ceiling, g.expires_at AS grant_expires_at,
       g.revoked_at, t.id AS active_token_id
       FROM oauth_refresh_tokens rt
       JOIN oauth_grants g ON g.id = rt.grant_id
       LEFT JOIN tokens t ON t.id = g.user_token_id AND t.account_id = g.account_id AND t.revoked_at IS NULL
       WHERE rt.refresh_token_hash = ?`).get(digest) as {
         refresh_token_hash: string; token_expires_at: number; consumed_at: number | null;
-        grant_id: string; client_id: string; resource: string; granted_scopes: string;
+        grant_id: string; client_id: string; resource: string; scope_ceiling: string;
         grant_expires_at: number; revoked_at: number | null; active_token_id: string | null;
       } | undefined;
     if (!row || !tokenDigestMatches(input.refreshToken, row.refresh_token_hash) ||
@@ -480,8 +482,10 @@ export function rotateOAuthRefreshToken(input: {
       return null;
     }
 
-    const scopes = storedStringArray(row.granted_scopes);
-    if (!scopes.length) return null;
+    const scopeCeiling = storedStringArray(row.scope_ceiling);
+    const scopes = (db.prepare(`SELECT tool_name FROM tool_permissions
+      WHERE token_id = ? AND allowed = 1`).all(row.active_token_id) as Array<{ tool_name: string }>)
+      .map((entry) => `mailstack:${entry.tool_name}`).filter((scope) => scopeCeiling.includes(scope));
     const consumed = db.prepare(`UPDATE oauth_refresh_tokens SET consumed_at = ?
       WHERE refresh_token_hash = ? AND consumed_at IS NULL AND expires_at > ?`).run(now, digest, now);
     if (!consumed.changes) return null;
@@ -506,7 +510,7 @@ export function findOAuthAccessToken(token: string, resource: string, now = Date
   const db = getDatabase();
   return db.transaction(() => {
     const row = db.prepare(`SELECT t.*, a.username, g.id AS grant_id, g.resource,
-      g.granted_scopes, g.expires_at AS grant_expires_at, g.revoked_at AS grant_revoked_at,
+      g.scope_ceiling, g.granted_scopes, g.expires_at AS grant_expires_at, g.revoked_at AS grant_revoked_at,
       at.expires_at AS access_expires_at, at.access_token_hash
       FROM oauth_access_tokens at
       JOIN oauth_grants g ON g.id = at.grant_id
@@ -518,9 +522,12 @@ export function findOAuthAccessToken(token: string, resource: string, now = Date
         username: string; access_token_hash: string;
       }) | undefined;
     if (!row || !tokenDigestMatches(token, row.access_token_hash)) return null;
-    const scopes = storedStringArray(row.granted_scopes);
-    const scopeSet = new Set(scopes.map((scope) => scope.slice('mailstack:'.length)));
     const summary = tokenSummary(row);
+    const scopeCeiling = new Set(storedStringArray(row.scope_ceiling));
+    const scopes = summary.enabledTools
+      .map((tool) => `mailstack:${tool}`)
+      .filter((scope) => scopeCeiling.has(scope));
+    const scopeSet = new Set(scopes.map((scope) => scope.slice('mailstack:'.length)));
     const lastUsedAt = now;
     db.prepare('UPDATE oauth_access_tokens SET last_used_at = ? WHERE access_token_hash = ?').run(now, digest);
     db.prepare('UPDATE tokens SET last_used_at = ? WHERE id = ? AND revoked_at IS NULL').run(now, row.id);
@@ -539,21 +546,35 @@ export function findOAuthAccessToken(token: string, resource: string, now = Date
 
 /** Lists OAuth grants only for one account, including revoked connections for management. */
 export function listOAuthGrants(accountId: string): OAuthGrantSummary[] {
-  const rows = getDatabase().prepare(`SELECT g.id, g.account_id, g.user_token_id,
+  const db = getDatabase();
+  const rows = db.prepare(`SELECT g.id, g.account_id, g.user_token_id,
     t.label AS user_token_label, g.client_id, c.client_name, g.resource,
-    g.granted_scopes, g.created_at, g.expires_at, g.revoked_at
+      g.granted_scopes, g.scope_ceiling, g.created_at, g.expires_at, g.revoked_at
     FROM oauth_grants g
     JOIN tokens t ON t.id = g.user_token_id
     JOIN oauth_clients c ON c.client_id = g.client_id
     WHERE g.account_id = ? ORDER BY g.created_at DESC, g.id`).all(accountId) as Array<{
       id: string; account_id: string; user_token_id: string; user_token_label: string;
-      client_id: string; client_name: string; resource: string; granted_scopes: string;
+      client_id: string; client_name: string; resource: string; granted_scopes: string; scope_ceiling: string;
       created_at: number; expires_at: number; revoked_at: number | null;
     }>;
+  const enabledRows = db.prepare(`SELECT p.token_id, p.tool_name FROM tool_permissions p
+    JOIN tokens t ON t.id = p.token_id
+    WHERE t.account_id = ? AND t.revoked_at IS NULL AND p.allowed = 1`).all(accountId) as Array<{
+      token_id: string; tool_name: string;
+    }>;
+  const enabledByToken = new Map<string, Set<string>>();
+  for (const permission of enabledRows) {
+    const tools = enabledByToken.get(permission.token_id) ?? new Set<string>();
+    tools.add(permission.tool_name);
+    enabledByToken.set(permission.token_id, tools);
+  }
   return rows.map((row) => ({
     id: row.id, accountId: row.account_id, userTokenId: row.user_token_id,
     userTokenLabel: row.user_token_label, clientId: row.client_id, clientName: row.client_name,
-    resource: row.resource, scopes: storedStringArray(row.granted_scopes),
+    resource: row.resource, scopes: row.revoked_at === null && row.expires_at > Date.now()
+      ? storedStringArray(row.scope_ceiling).filter((scope) => enabledByToken.get(row.user_token_id)?.has(scope.slice('mailstack:'.length)))
+      : storedStringArray(row.granted_scopes),
     createdAt: row.created_at, expiresAt: row.expires_at, revokedAt: row.revoked_at,
   }));
 }

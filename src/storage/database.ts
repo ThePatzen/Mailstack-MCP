@@ -36,12 +36,13 @@ export function initializeDatabase(dataDir: string, encryptionKey: Buffer): Data
     connection.pragma('busy_timeout = 5000');
     connection.exec('CREATE TABLE IF NOT EXISTS schema_migrations (version INTEGER PRIMARY KEY, applied_at INTEGER NOT NULL)');
     const version = (connection.prepare('SELECT MAX(version) AS version FROM schema_migrations').get() as { version: number | null }).version ?? 0;
-    if (version > 4) throw new Error('Database schema is newer than this service supports.');
+    if (version > 5) throw new Error('Database schema is newer than this service supports.');
     const migrations = [
       { version: 1, filename: '001-initial.sql' },
       { version: 2, filename: '002-email-login-challenges.sql' },
       { version: 3, filename: '003-oauth.sql' },
       { version: 4, filename: '004-oauth-refresh-tokens.sql' },
+      { version: 5, filename: '005-oauth-token-scope-sync.sql' },
     ];
     for (const migration of migrations) {
       if (version >= migration.version) continue;

@@ -18,7 +18,7 @@
     <section class="login-card oauth-card" aria-labelledby="page-title">
       <div class="eyebrow">OAUTH-FREIGABE</div>
       <h1 id="page-title">Postfachzugriff erlauben?</h1>
-      <p class="muted"> <strong><%= clientName %></strong> möchte mit Ihrem Mailstack-Konto auf ausgewählte Funktionen zugreifen.</p>
+      <p class="muted"> <strong><%= clientName %></strong> möchte mit Ihrem Mailstack-Konto auf Funktionen zugreifen.</p>
       <div class="oauth-account"><span class="status-dot" aria-hidden="true"></span><span>Angemeldet als</span><strong><%= username %></strong></div>
       <% if (error) { %><div class="alert alert-error" role="alert"><%= error %></div><% } %>
       <% if (tokens.length) { %>
@@ -31,14 +31,7 @@
               <option value="<%= token.id %>" <%= index === 0 ? 'selected' : '' %>><%= token.label %> — <%= token.enabledToolLabels.length ? token.enabledToolLabels.join(' · ') : 'keine Funktionen freigegeben' %></option>
             <% }) %>
           </select>
-          <p class="field-note">Das gewählte User-Token legt die maximalen Rechte fest. Änderungen und Widerruf dieses Tokens gelten auch für diese Verbindung.</p>
-          <fieldset class="oauth-scope-list">
-            <legend>Funktionen für diese Verbindung</legend>
-            <% scopes.forEach((scope) => { %>
-              <label class="oauth-scope-option"><input type="checkbox" name="scopes" value="<%= scope.value %>" checked><span><%= scope.label %></span></label>
-            <% }) %>
-          </fieldset>
-          <p class="field-note">Sie können den Zugriff hier weiter einschränken. Freigaben, die das gewählte User-Token nicht besitzt, werden nicht erteilt.</p>
+          <p class="field-note">Die angezeigten Funktionen dieses User-Tokens werden übernommen. Änderungen an den Token-Berechtigungen gelten automatisch auch für diese OAuth-Verbindung.</p>
           <button class="button button-primary button-wide" type="submit">Zugriff freigeben</button>
         </form>
       <% } else { %>

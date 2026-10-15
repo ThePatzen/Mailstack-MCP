@@ -172,15 +172,14 @@ function renderOAuthConsent(
   options: { error?: string; status?: number } = {},
 ): void {
   const username = getAccountCredentials(context.accountId)?.username ?? '';
-  const tokens = listTokens(context.accountId).filter((token) => token.revokedAt === null).map((token) => ({
-    id: token.id,
-    label: token.label,
-    enabledScopes: token.enabledTools.map((tool) => `mailstack:${tool}`),
-    enabledToolLabels: token.enabledTools.map((tool) => TOOL_LABELS[tool as keyof typeof TOOL_LABELS] ?? tool),
-  }));
-  const scopes = context.request.requestedScopes.map((scope) => {
-    const tool = scope.slice('mailstack:'.length) as keyof typeof TOOL_LABELS;
-    return { value: scope, label: TOOL_LABELS[tool] ?? tool };
+  const requestedScopes = new Set(context.request.requestedScopes);
+  const tokens = listTokens(context.accountId).filter((token) => token.revokedAt === null).map((token) => {
+    const enabledTools = token.enabledTools.filter((tool) => requestedScopes.has(`mailstack:${tool}`));
+    return {
+      id: token.id,
+      label: token.label,
+      enabledToolLabels: enabledTools.map((tool) => TOOL_LABELS[tool as keyof typeof TOOL_LABELS] ?? tool),
+    };
   });
   setNoStore(res);
   res.status(options.status ?? 200).render('oauth-consent', {
@@ -189,7 +188,6 @@ function renderOAuthConsent(
     username,
     requestId: context.requestId,
     tokens,
-    scopes,
     csrf: csrfToken(context.sessionId, deps.encryptionKey),
     error: options.error ?? '',
   });
@@ -403,7 +401,7 @@ export function createManagementRouter(deps: WebDependencies): Router {
     renderOAuthConsent(req, res, deps, context);
   });
 
-  // Bind the OAuth grant to one active token and an explicit subset of its enabled tool scopes.
+  // Bind the OAuth grant to one active token and the scope ceiling requested by the client.
   router.post('/oauth/consent', loggedIn, csrf, (req, res) => {
     const context = oauthConsentContext(req, deps);
     if (!context) {
@@ -412,17 +410,11 @@ export function createManagementRouter(deps: WebDependencies): Router {
       return;
     }
     const userTokenId = safeText(req.body?.userTokenId, 64);
-    const rawScopes = req.body?.scopes;
-    const selectedScopes = rawScopes === undefined ? [] : Array.isArray(rawScopes)
-      ? rawScopes.filter((value: unknown): value is string => typeof value === 'string')
-      : typeof rawScopes === 'string' ? [rawScopes] : [];
     const token = listTokens(context.accountId).find((candidate) => candidate.id === userTokenId && candidate.revokedAt === null);
-    const requestedScopes = new Set(context.request.requestedScopes);
     const enabledScopes = new Set(token?.enabledTools.map((tool) => `mailstack:${tool}`) ?? []);
-    if (!token || !selectedScopes.length || new Set(selectedScopes).size !== selectedScopes.length ||
-        selectedScopes.some((scope) => !requestedScopes.has(scope) || !enabledScopes.has(scope))) {
+    if (!token || !context.request.requestedScopes.some((scope) => enabledScopes.has(scope))) {
       renderOAuthConsent(req, res, deps, context, {
-        error: token ? 'Wählen Sie nur Funktionen, die für das ausgewählte User-Token freigegeben sind.' : 'Wählen Sie ein aktives User-Token für dieses Postfach aus.',
+        error: token ? 'Das ausgewählte User-Token hat keine vom OAuth-Client angeforderten Funktionen freigegeben.' : 'Wählen Sie ein aktives User-Token für dieses Postfach aus.',
         status: 400,
       });
       return;
@@ -440,7 +432,7 @@ export function createManagementRouter(deps: WebDependencies): Router {
       requestId: context.requestId,
       accountId: context.accountId,
       userTokenId,
-      grantedScopes: selectedScopes,
+      scopeCeiling: context.request.requestedScopes,
       expiresAt: Date.now() + OAUTH_AUTHORIZATION_CODE_TTL_MS,
     });
     if (!code) {
